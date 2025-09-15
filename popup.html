@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 350px;
+      min-height: 400px;
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f8f9fa;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #e1e8ed;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 18px;
+      color: #1da1f2;
+      flex: 1;
+    }
+
+    .status-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-left: 8px;
+    }
+
+    .status-indicator.active {
+      background: #17bf63;
+      box-shadow: 0 0 0 3px rgba(23, 191, 99, 0.2);
+    }
+
+    .status-indicator.inactive {
+      background: #657786;
+    }
+
+    .main-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px;
+      background: white;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .toggle-label {
+      font-weight: 500;
+      color: #14171a;
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 48px;
+      height: 24px;
+      background: #657786;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .toggle-switch.active {
+      background: #1da1f2;
+    }
+
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.3s;
+    }
+
+    .toggle-switch.active::after {
+      transform: translateX(24px);
+    }
+
+    .stats-section {
+      background: white;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .stats-title {
+      font-weight: 500;
+      color: #14171a;
+      margin-bottom: 8px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .stat-item {
+      text-align: center;
+      padding: 8px;
+      background: #f7f9fa;
+      border-radius: 6px;
+    }
+
+    .stat-value {
+      font-size: 20px;
+      font-weight: bold;
+      color: #1da1f2;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #657786;
+      margin-top: 2px;
+    }
+
+    .settings-section {
+      background: white;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .settings-title {
+      font-weight: 500;
+      color: #14171a;
+      margin-bottom: 12px;
+    }
+
+    .setting-item {
+      margin-bottom: 12px;
+    }
+
+    .setting-label {
+      display: block;
+      font-size: 13px;
+      color: #657786;
+      margin-bottom: 4px;
+    }
+
+    .setting-input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #e1e8ed;
+      border-radius: 4px;
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+
+    .setting-select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #e1e8ed;
+      border-radius: 4px;
+      font-size: 13px;
+      background: white;
+      box-sizing: border-box;
+    }
+
+    .api-key-input {
+      position: relative;
+    }
+
+    .api-key-toggle {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #657786;
+      font-size: 12px;
+    }
+
+    .current-status {
+      padding: 8px;
+      background: #f7f9fa;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #657786;
+      margin-bottom: 16px;
+    }
+
+    .error-message {
+      background: #ffebee;
+      color: #c62828;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    .success-message {
+      background: #e8f5e8;
+      color: #2e7d32;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+
+    .btn-primary {
+      background: #1da1f2;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #1991db;
+    }
+
+    .btn-secondary {
+      background: #e1e8ed;
+      color: #14171a;
+    }
+
+    .btn-secondary:hover {
+      background: #d1d8dd;
+    }
+
+    .footer {
+      text-align: center;
+      font-size: 11px;
+      color: #657786;
+      margin-top: 16px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Twitter Auto-Engagement</h1>
+    <div class="status-indicator" id="statusIndicator"></div>
+  </div>
+
+  <div class="error-message" id="errorMessage"></div>
+  <div class="success-message" id="successMessage"></div>
+
+  <div class="main-toggle">
+    <span class="toggle-label">Auto-Engagement</span>
+    <div class="toggle-switch" id="mainToggle">
+    </div>
+  </div>
+
+  <div class="current-status" id="currentStatus">
+    Status: Initializing...
+  </div>
+
+  <div class="stats-section">
+    <div class="stats-title">Session Stats</div>
+    <div class="stats-grid">
+      <div class="stat-item">
+        <div class="stat-value" id="likesCount">0</div>
+        <div class="stat-label">Likes</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="commentsCount">0</div>
+        <div class="stat-label">Comments</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="sessionTime">0m</div>
+        <div class="stat-label">Session Time</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="postsProcessed">0</div>
+        <div class="stat-label">Posts Processed</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-title">Quick Settings</div>
+
+    <div class="setting-item">
+      <label class="setting-label">OpenRouter API Key <span style="color: #f91880; font-size: 11px;">(Click Save Settings after entering)</span></label>
+      <div class="api-key-input">
+        <input type="password" class="setting-input" id="apiKey" placeholder="Enter your API key">
+        <button class="api-key-toggle" id="apiKeyToggle">Show</button>
+      </div>
+    </div>
+
+    <div class="setting-item">
+      <label class="setting-label">Comment Tone</label>
+      <select class="setting-select" id="commentTone">
+        <option value="casual">Casual & Friendly</option>
+        <option value="professional">Professional</option>
+        <option value="supportive">Supportive & Encouraging</option>
+      </select>
+    </div>
+
+    <div class="setting-item">
+      <label class="setting-label">Action Frequency (seconds)</label>
+      <select class="setting-select" id="actionFrequency">
+        <option value="15">Very Fast (15s)</option>
+        <option value="30">Fast (30s)</option>
+        <option value="60">Medium (1m)</option>
+        <option value="120">Slow (2m)</option>
+        <option value="300">Very Slow (5m)</option>
+      </select>
+    </div>
+
+    <div class="setting-item">
+      <label class="setting-label">AI Model</label>
+      <input type="text" class="setting-input" id="aiModel" placeholder="e.g. anthropic/claude-3-haiku">
+    </div>
+  </div>
+
+  <div class="action-buttons">
+    <button class="btn btn-secondary" id="saveSettings">Save Settings</button>
+    <button class="btn btn-primary" id="testAPI">Test API</button>
+  </div>
+
+  <div class="action-buttons" style="margin-top: 8px;">
+    <button class="btn btn-secondary" id="resetCounters">Reset Rate Limits</button>
+  </div>
+
+  <div class="footer">
+    Version 1.0.0 | Check console for detailed logs
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
