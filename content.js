@@ -5,7 +5,8 @@ class TwitterAutoEngagement {
     this.isEnabled = false;
     this.settings = {};
     this.isProcessing = false;
-    this.lastActionTime = 0;
+    this.lastLikeTime = 0;
+    this.lastCommentTime = 0;
     this.actionCount = { likes: 0, comments: 0 };
     this.sessionStartTime = Date.now();
 
@@ -95,7 +96,8 @@ class TwitterAutoEngagement {
   resetRateLimits() {
     console.log('Resetting rate limits manually');
     this.actionCount = { likes: 0, comments: 0 };
-    this.lastActionTime = 0;
+    this.lastLikeTime = 0;
+    this.lastCommentTime = 0;
     this.hourlyResetTime = Date.now() + (60 * 60 * 1000);
     console.log('Rate limits reset - can perform actions immediately');
   }
@@ -116,12 +118,12 @@ class TwitterAutoEngagement {
       clearInterval(this.monitoringInterval);
     }
 
-    // Check for new posts every 2-5 seconds
+    // Check for new posts more frequently when rate limited (to retry tweets)
     this.monitoringInterval = setInterval(() => {
       if (this.isEnabled && !this.isProcessing) {
         this.scanForPosts();
       }
-    }, this.randomDelay(2000, 5000));
+    }, 3000); // Fixed 3-second interval for consistent retries
   }
 
   stopMonitoring() {
@@ -139,9 +141,28 @@ class TwitterAutoEngagement {
 
     if (tweets.length === 0) return;
 
-    // Process one random tweet
-    const randomTweet = tweets[Math.floor(Math.random() * tweets.length)];
-    await this.processTweet(randomTweet);
+    // Try to find a tweet we can actually process (not rate limited)
+    let tweetToProcess = null;
+    const shuffledTweets = tweets.sort(() => Math.random() - 0.5); // Randomize order
+
+    for (const tweet of shuffledTweets) {
+      // Check if we can perform any actions on this tweet
+      const canLike = this.checkRateLimits('like');
+      const canComment = this.checkRateLimits('comment');
+
+      if (canLike || canComment) {
+        tweetToProcess = tweet;
+        console.log('Found processable tweet - can like:', canLike, 'can comment:', canComment);
+        break;
+      }
+    }
+
+    if (tweetToProcess) {
+      await this.processTweet(tweetToProcess);
+    } else {
+      console.log('All tweets are rate limited, will retry on next scan');
+      // Don't mark any tweets as processed - they'll be retried
+    }
   }
 
   findTweets() {
@@ -235,10 +256,13 @@ class TwitterAutoEngagement {
         return;
       }
 
-      // Check rate limits
-      if (!this.checkRateLimits()) {
-        console.log('Rate limit reached, skipping');
-        return;
+      // Re-check rate limits at processing time (they may have changed)
+      const canLike = this.checkRateLimits('like');
+      const canComment = this.checkRateLimits('comment');
+
+      if (!canLike && !canComment) {
+        console.log('Rate limits hit during processing - will retry this tweet later');
+        return; // Don't mark as processed - will be retried
       }
 
       // Scroll tweet into view with human-like behavior
@@ -248,29 +272,39 @@ class TwitterAutoEngagement {
       const readingDelay = this.calculateReadingTime(tweetElement);
       await this.humanDelay(readingDelay);
 
-      // Decide what actions to take
-      const shouldLike = this.shouldPerformAction('like');
-      const shouldComment = this.shouldPerformAction('comment');
+      // Decide what actions to take based on both probability and rate limits
+      const shouldLike = canLike && this.shouldPerformAction('like');
+      const shouldComment = canComment && this.shouldPerformAction('comment');
+
+      let actionPerformed = false;
 
       if (shouldLike) {
-        await this.likeTweet(tweetElement);
+        const likeSuccess = await this.likeTweet(tweetElement);
+        if (likeSuccess) actionPerformed = true;
       }
 
       if (shouldComment) {
-        await this.commentOnTweet(tweetElement);
+        const commentSuccess = await this.commentOnTweet(tweetElement);
+        if (commentSuccess) actionPerformed = true;
       }
 
-      this.markTweetProcessed(tweetId);
+      // Only mark as processed if we actually performed an action
+      // This prevents tweets from being marked as processed when no action was taken
+      if (actionPerformed || (!shouldLike && !shouldComment)) {
+        this.markTweetProcessed(tweetId);
+        console.log('Tweet marked as processed');
+      } else {
+        console.log('No action taken on tweet - will retry later');
+      }
 
     } catch (error) {
       console.error('Error processing tweet:', error);
     } finally {
       this.isProcessing = false;
-      this.lastActionTime = Date.now();
     }
   }
 
-  checkRateLimits() {
+  checkRateLimits(actionType = 'like') {
     const now = Date.now();
 
     // Reset hourly counters if needed
@@ -281,22 +315,36 @@ class TwitterAutoEngagement {
     }
 
     // Check hourly limits
-    const maxLikesPerHour = this.settings.maxLikesPerHour || 50;
-    if (this.actionCount.likes >= maxLikesPerHour) {
-      console.log(`Rate limit reached: ${this.actionCount.likes}/${maxLikesPerHour} likes this hour`);
+    const maxLikesPerHour = this.settings.maxLikesPerHour || 100;
+    if (actionType === 'like' && this.actionCount.likes >= maxLikesPerHour) {
+      console.log(`Like rate limit reached: ${this.actionCount.likes}/${maxLikesPerHour} likes this hour`);
       return false;
     }
 
-    // Check minimum time between actions
-    const minDelay = (this.settings.likeFrequency || 30) * 1000;
-    const timeSinceLastAction = now - this.lastActionTime;
+    // Separate time checks for likes vs comments
+    if (actionType === 'like') {
+      const likeDelay = (this.settings.likeFrequency || 15) * 1000;
+      const timeSinceLastLike = now - this.lastLikeTime;
 
-    if (timeSinceLastAction < minDelay) {
-      console.log(`Rate limit: Need to wait ${Math.ceil((minDelay - timeSinceLastAction) / 1000)}s more`);
-      return false;
+      if (timeSinceLastLike < likeDelay) {
+        console.log(`Like rate limit: Need to wait ${Math.ceil((likeDelay - timeSinceLastLike) / 1000)}s more for next like`);
+        return false;
+      }
+
+      console.log(`Like rate limit check passed: ${this.actionCount.likes}/${maxLikesPerHour} likes, ${Math.floor(timeSinceLastLike / 1000)}s since last like`);
+    } else if (actionType === 'comment') {
+      // Comments have much shorter delays since they have natural delays (AI generation, review popup)
+      const commentDelay = 5000; // Only 5 seconds between comments
+      const timeSinceLastComment = now - this.lastCommentTime;
+
+      if (timeSinceLastComment < commentDelay) {
+        console.log(`Comment rate limit: Need to wait ${Math.ceil((commentDelay - timeSinceLastComment) / 1000)}s more for next comment`);
+        return false;
+      }
+
+      console.log(`Comment rate limit check passed: ${this.actionCount.comments} comments, ${Math.floor(timeSinceLastComment / 1000)}s since last comment`);
     }
 
-    console.log(`Rate limit check passed: ${this.actionCount.likes}/${maxLikesPerHour} likes, ${Math.floor(timeSinceLastAction / 1000)}s since last action`);
     return true;
   }
 
@@ -365,6 +413,7 @@ class TwitterAutoEngagement {
       await this.humanClick(likeButton);
 
       this.actionCount.likes++;
+      this.lastLikeTime = Date.now(); // Update like timestamp
       console.log('Tweet liked successfully');
 
       // Log action
@@ -452,6 +501,7 @@ class TwitterAutoEngagement {
 
       if (success) {
         this.actionCount.comments++;
+        this.lastCommentTime = Date.now(); // Update comment timestamp
         console.log('Comment posted successfully');
 
         // Log action
