@@ -718,10 +718,12 @@ class TwitterAutoEngagement {
 
       console.log('✅ Comment pasted in reply window. User can now manually review and post.');
 
-      // Wait for the user to either post or close the window
-      console.log('🔒 PAUSING EXTENSION - Waiting for manual user action...');
-      await this.waitForUserAction(composeBox);
-      console.log('🔓 RESUMING EXTENSION - User action completed');
+      // Show a manual confirmation dialog to pause extension
+      console.log('🔒 PAUSING EXTENSION - Showing confirmation dialog...');
+      const startTime = Date.now();
+      await this.showManualConfirmationDialog();
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`🔓 RESUMING EXTENSION - User confirmed after ${duration}s`);
 
       return true;
 
@@ -731,13 +733,112 @@ class TwitterAutoEngagement {
     }
   }
 
-  async waitForUserAction(composeBox) {
+  async showManualConfirmationDialog() {
     return new Promise((resolve) => {
-      console.log('⏳ Waiting for user to manually post or close reply window...');
+      // Create a NON-BLOCKING notification dialog positioned at top-right
+      const dialog = document.createElement('div');
+      dialog.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        width: 320px;
+        background: white;
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        z-index: 99999;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        border: 2px solid #1da1f2;
+        animation: slideIn 0.3s ease-out;
+      `;
+
+      // Add slide-in animation
+      const style = document.createElement('style');
+      style.textContent = `
+        @keyframes slideIn {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes pulse {
+          0% { transform: scale(1); }
+          50% { transform: scale(1.05); }
+          100% { transform: scale(1); }
+        }
+      `;
+      document.head.appendChild(style);
+
+      dialog.innerHTML = `
+        <div style="margin-bottom: 12px; font-size: 18px; font-weight: bold; color: #1da1f2;">
+          🤖 Extension Paused
+        </div>
+        <div style="margin-bottom: 16px; color: #333; line-height: 1.4; font-size: 14px;">
+          AI comment has been pasted in the reply window.
+          <br><br>
+          <strong>Review and manually post (or close) the reply, then click Continue.</strong>
+        </div>
+        <button id="continue-btn" style="
+          background: #1da1f2;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          padding: 10px 20px;
+          font-size: 14px;
+          font-weight: bold;
+          cursor: pointer;
+          width: 100%;
+          transition: all 0.2s;
+        " onmouseover="this.style.background='#1a91da'; this.style.transform='scale(1.02)'"
+           onmouseout="this.style.background='#1da1f2'; this.style.transform='scale(1)'">
+          ✅ Continue Extension
+        </button>
+      `;
+
+      // Add click handler
+      const continueBtn = dialog.querySelector('#continue-btn');
+      continueBtn.onclick = () => {
+        dialog.style.animation = 'slideIn 0.3s ease-out reverse';
+        setTimeout(() => {
+          if (document.body.contains(dialog)) {
+            document.body.removeChild(dialog);
+          }
+          if (document.head.contains(style)) {
+            document.head.removeChild(style);
+          }
+        }, 300);
+        resolve();
+      };
+
+      // Make it pulsing every 5 seconds to remind user
+      const pulseInterval = setInterval(() => {
+        if (document.body.contains(dialog)) {
+          dialog.style.animation = 'pulse 0.5s ease-in-out';
+          setTimeout(() => {
+            dialog.style.animation = '';
+          }, 500);
+        } else {
+          clearInterval(pulseInterval);
+        }
+      }, 5000);
+
+      // Add to page
+      document.body.appendChild(dialog);
+
+      console.log('✅ Non-blocking confirmation dialog shown - user can interact with reply window');
+    });
+  }
+
+  async waitForUserAction(composeBox) {
+    console.log('🔍 DEBUGGING: waitForUserAction called');
+    console.log('🔍 DEBUGGING: composeBox exists?', !!composeBox);
+    console.log('🔍 DEBUGGING: composeBox visible?', composeBox?.offsetParent !== null);
+
+    return new Promise((resolve) => {
+      console.log('🔍 DEBUGGING: Promise created, setting up watchers');
 
       let checkInterval;
       let resolved = false;
       let keyListener, clickListener;
+      let startTime = Date.now();
 
       const cleanup = () => {
         if (checkInterval) clearInterval(checkInterval);
@@ -748,45 +849,84 @@ class TwitterAutoEngagement {
       const resolveOnce = (reason) => {
         if (!resolved) {
           resolved = true;
-          console.log(`✅ User action detected (${reason}), continuing with next tweet`);
+          const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+          console.log(`🔍 DEBUGGING: Resolving after ${duration}s due to: ${reason}`);
           cleanup();
           resolve();
         }
       };
 
-      // Simple but reliable checking every 2 seconds
+      // Initial state check
+      console.log('🔍 DEBUGGING: Initial checks...');
+      console.log('🔍 DEBUGGING: composeBox in DOM?', document.body.contains(composeBox));
+      console.log('🔍 DEBUGGING: composeBox offsetParent?', composeBox.offsetParent);
+
+      const initialDialog = composeBox.closest('[role="dialog"]');
+      console.log('🔍 DEBUGGING: Found parent dialog?', !!initialDialog);
+      console.log('🔍 DEBUGGING: Dialog visible?', initialDialog?.offsetParent !== null);
+
+      // If the compose box is already gone, resolve immediately
+      if (!document.body.contains(composeBox) || !composeBox.offsetParent) {
+        console.log('🔍 DEBUGGING: Compose box already gone, resolving immediately');
+        resolveOnce('compose box already gone');
+        return;
+      }
+
+      // If no parent dialog found, resolve immediately
+      if (!initialDialog || !initialDialog.offsetParent) {
+        console.log('🔍 DEBUGGING: No dialog found, resolving immediately');
+        resolveOnce('no dialog found');
+        return;
+      }
+
+      console.log('⏳ DEBUGGING: Starting to wait for user action...');
+
+      // Check every 1 second for more responsive detection
       checkInterval = setInterval(() => {
         try {
+          console.log('🔍 DEBUGGING: Interval check...');
+
           // Primary check: Is the compose box still in the DOM and visible?
           if (!document.body.contains(composeBox)) {
+            console.log('🔍 DEBUGGING: Compose box removed from DOM');
             resolveOnce('compose box removed from DOM');
             return;
           }
 
           if (!composeBox.offsetParent) {
+            console.log('🔍 DEBUGGING: Compose box hidden (offsetParent null)');
             resolveOnce('compose box hidden');
             return;
           }
 
           // Secondary check: Is there still an active dialog containing our compose box?
           const parentDialog = composeBox.closest('[role="dialog"]');
-          if (!parentDialog || !parentDialog.offsetParent) {
+          if (!parentDialog) {
+            console.log('🔍 DEBUGGING: Parent dialog no longer found');
+            resolveOnce('parent dialog not found');
+            return;
+          }
+
+          if (!parentDialog.offsetParent) {
+            console.log('🔍 DEBUGGING: Parent dialog hidden');
             resolveOnce('parent dialog closed');
             return;
           }
 
           // Log that we're still waiting
-          console.log('⏳ Still waiting for user action on reply window...');
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          console.log(`⏳ DEBUGGING: Still waiting (${elapsed}s)...`);
 
         } catch (error) {
-          console.error('Error in waitForUserAction:', error);
+          console.error('🔍 DEBUGGING: Error in interval check:', error);
           resolveOnce('error during check');
         }
-      }, 2000);
+      }, 1000); // Check every second
 
       // Listen for ESC key
       keyListener = (event) => {
         if (event.key === 'Escape') {
+          console.log('🔍 DEBUGGING: ESC key detected');
           resolveOnce('ESC key pressed');
         }
       };
@@ -796,6 +936,7 @@ class TwitterAutoEngagement {
       clickListener = (event) => {
         const parentDialog = composeBox.closest('[role="dialog"]');
         if (parentDialog && !parentDialog.contains(event.target)) {
+          console.log('🔍 DEBUGGING: Click outside detected');
           resolveOnce('clicked outside modal');
         }
       };
@@ -803,12 +944,14 @@ class TwitterAutoEngagement {
       // Add click listener after small delay
       setTimeout(() => {
         document.addEventListener('click', clickListener);
-      }, 1000);
+        console.log('🔍 DEBUGGING: Click listener added');
+      }, 500);
 
-      // Safety timeout (5 minutes)
+      // Shorter safety timeout for testing
       setTimeout(() => {
+        console.log('🔍 DEBUGGING: Safety timeout reached');
         resolveOnce('safety timeout');
-      }, 300000);
+      }, 30000); // 30 seconds instead of 5 minutes for testing
     });
   }
 
