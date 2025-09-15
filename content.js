@@ -272,9 +272,14 @@ class TwitterAutoEngagement {
       const readingDelay = this.calculateReadingTime(tweetElement);
       await this.humanDelay(readingDelay);
 
-      // Decide what actions to take based on both probability and rate limits
-      const shouldLike = canLike && this.shouldPerformAction('like');
-      const shouldComment = canComment && this.shouldPerformAction('comment');
+      // Decide what actions to take based on settings, probability and rate limits
+      const likingEnabled = this.settings.enableLiking !== false;
+      const commentingEnabled = this.settings.enableCommenting !== false;
+
+      const shouldLike = likingEnabled && canLike && this.shouldPerformAction('like');
+      const shouldComment = commentingEnabled && canComment && this.shouldPerformAction('comment');
+
+      console.log(`Action decisions: like=${shouldLike} (enabled=${likingEnabled}, canLike=${canLike}), comment=${shouldComment} (enabled=${commentingEnabled}, canComment=${canComment})`);
 
       let actionPerformed = false;
 
@@ -288,13 +293,18 @@ class TwitterAutoEngagement {
         if (commentSuccess) actionPerformed = true;
       }
 
-      // Only mark as processed if we actually performed an action
-      // This prevents tweets from being marked as processed when no action was taken
-      if (actionPerformed || (!shouldLike && !shouldComment)) {
+      // Only mark as processed if we actually performed an action OR if we deliberately chose not to act
+      // Don't mark as processed if we failed due to technical issues or content filtering
+      if (actionPerformed) {
         this.markTweetProcessed(tweetId);
-        console.log('Tweet marked as processed');
+        console.log('✅ Tweet marked as processed - action taken');
+      } else if (!shouldLike && !shouldComment) {
+        // We deliberately chose not to act (probability-based decision)
+        this.markTweetProcessed(tweetId);
+        console.log('✅ Tweet marked as processed - no action chosen by probability');
       } else {
-        console.log('No action taken on tweet - will retry later');
+        // We wanted to act but failed (rate limits, content filtering, technical issues)
+        console.log('⏳ Tweet not marked as processed - will retry later');
       }
 
     } catch (error) {
@@ -458,69 +468,175 @@ class TwitterAutoEngagement {
 
   async commentOnTweet(tweetElement) {
     try {
-      console.log('Starting comment generation for tweet...');
+      console.log('🎯 Starting intelligent comment generation...');
 
-      // Extract tweet content for AI generation
-      const tweetContent = this.extractTweetContent(tweetElement);
-
-      if (!tweetContent) {
-        console.log('Could not extract tweet content');
+      // Check if we should comment on this post (text-only or images allowed)
+      if (!this.shouldCommentOnPost(tweetElement)) {
+        console.log('❌ Post not suitable for commenting - skipping');
         return false;
       }
 
-      console.log(`Extracted tweet content: "${tweetContent.substring(0, 100)}..."`);
+      // Extract full post content including image context if enabled
+      const fullPostContent = this.extractFullPostContent(tweetElement);
 
-      // Generate comment
-      console.log('Generating AI comment...');
+      if (!fullPostContent) {
+        console.log('Could not extract post content');
+        return false;
+      }
+
+      console.log(`📝 Extracted post content: "${fullPostContent.substring(0, 150)}..."`);
+
+      // Generate intelligent comment
+      console.log('🧠 Generating intelligent AI comment...');
       const response = await chrome.runtime.sendMessage({
         type: 'GENERATE_COMMENT',
-        postContent: tweetContent,
+        postContent: fullPostContent,
         settings: this.settings
       });
 
       if (!response.success) {
-        console.error('Failed to generate comment:', response.error);
+        console.log(`❌ Comment generation failed: ${response.error}`);
         return false;
       }
 
-      console.log(`Generated comment: "${response.comment}"`);
+      console.log(`✅ Generated comment: "${response.comment}"`);
 
-      // Show comment review popup
-      const reviewResult = await this.showCommentReview(response.comment, tweetElement);
-
-      if (!reviewResult.approved) {
-        console.log('Comment not approved');
-        return false;
-      }
-
-      const finalComment = reviewResult.editedComment || response.comment;
-      console.log(`Final comment to post: "${finalComment}"`);
-
-      // Post the comment
-      const success = await this.postComment(tweetElement, finalComment);
+      // Open reply window and paste comment (no auto-posting)
+      const success = await this.openReplyAndPasteComment(tweetElement, response.comment);
 
       if (success) {
-        this.actionCount.comments++;
-        this.lastCommentTime = Date.now(); // Update comment timestamp
-        console.log('Comment posted successfully');
-
-        // Log action
-        chrome.runtime.sendMessage({
-          type: 'LOG_ACTION',
-          action: 'comment',
-          data: {
-            timestamp: Date.now(),
-            comment: finalComment
-          }
-        });
+        console.log('✅ Reply window opened with comment pasted');
+        // Don't increment counters or log actions until user manually posts
       } else {
-        console.log('Failed to post comment');
+        console.log('❌ Failed to open reply window');
       }
 
       return success;
     } catch (error) {
-      console.error('Error commenting on tweet:', error);
+      console.error('Error in intelligent commenting:', error);
       return false;
+    }
+  }
+
+  // Check if we should comment on this post based on settings and content
+  shouldCommentOnPost(tweetElement) {
+    try {
+      const includeImages = this.settings.includeImages === true;
+
+      // Check for media indicators
+      const mediaSelectors = [
+        'img',
+        'video',
+        '[data-testid="tweetPhoto"]',
+        '[data-testid="videoComponent"]',
+        '[data-testid="card.wrapper"]', // Link cards
+        '[data-testid="poll"]',
+        '.twitter-video'
+      ];
+
+      let hasMedia = false;
+      let mediaType = null;
+
+      for (const selector of mediaSelectors) {
+        if (tweetElement.querySelector(selector)) {
+          hasMedia = true;
+          mediaType = selector;
+          break;
+        }
+      }
+
+      // If post has media but we don't include images, skip
+      if (hasMedia && !includeImages) {
+        console.log(`❌ Post contains media (${mediaType}) but images disabled - skipping`);
+        return false;
+      }
+
+      // Get text content
+      const textContent = this.extractTweetContent(tweetElement);
+
+      // Must have meaningful text (at least 10 characters for image posts, 20 for text-only)
+      const meaningfulText = textContent.replace(/@\w+/g, '').replace(/https?:\/\/\S+/g, '').trim();
+      const minLength = hasMedia ? 10 : 20; // Lower requirement for image posts
+
+      if (meaningfulText.length < minLength) {
+        console.log(`❌ Post lacks meaningful text content (${meaningfulText.length} chars, need ${minLength})`);
+        return false;
+      }
+
+      if (hasMedia && includeImages) {
+        console.log('✅ Image post suitable for commenting (images enabled)');
+      } else {
+        console.log('✅ Text-only post suitable for commenting');
+      }
+
+      return true;
+    } catch (error) {
+      console.log('❌ Error analyzing post type:', error);
+      return false;
+    }
+  }
+
+  // Extract comprehensive content including image context
+  extractFullPostContent(tweetElement) {
+    const textContent = this.extractTweetContent(tweetElement);
+    const includeImages = this.settings.includeImages === true;
+
+    if (!includeImages) {
+      return textContent;
+    }
+
+    // If images are included, also extract image context
+    const imageContext = this.extractImageContext(tweetElement);
+
+    if (imageContext) {
+      return `${textContent}\n\n[Image context: ${imageContext}]`;
+    }
+
+    return textContent;
+  }
+
+  // Extract context about images in the post
+  extractImageContext(tweetElement) {
+    try {
+      const imageContexts = [];
+
+      // Look for images with alt text
+      const images = tweetElement.querySelectorAll('img[alt]');
+      images.forEach((img, index) => {
+        const altText = img.getAttribute('alt');
+        if (altText && altText.trim() && !altText.toLowerCase().includes('avatar')) {
+          imageContexts.push(`Image ${index + 1}: ${altText}`);
+        }
+      });
+
+      // Look for video indicators
+      if (tweetElement.querySelector('[data-testid="videoComponent"]')) {
+        imageContexts.push('Contains video content');
+      }
+
+      // Look for link card previews
+      const linkCard = tweetElement.querySelector('[data-testid="card.wrapper"]');
+      if (linkCard) {
+        const cardTitle = linkCard.querySelector('[data-testid="card.title"]');
+        const cardDescription = linkCard.querySelector('[data-testid="card.description"]');
+
+        if (cardTitle) {
+          imageContexts.push(`Link preview: ${cardTitle.textContent}`);
+        }
+        if (cardDescription) {
+          imageContexts.push(`Description: ${cardDescription.textContent}`);
+        }
+      }
+
+      // Look for polls
+      if (tweetElement.querySelector('[data-testid="poll"]')) {
+        imageContexts.push('Contains poll/survey');
+      }
+
+      return imageContexts.length > 0 ? imageContexts.join(', ') : null;
+    } catch (error) {
+      console.log('Error extracting image context:', error);
+      return null;
     }
   }
 
@@ -545,130 +661,10 @@ class TwitterAutoEngagement {
     return allText.length > 20 ? allText.substring(0, 200) : allText;
   }
 
-  async showCommentReview(comment, tweetElement) {
-    return new Promise((resolve) => {
-      // Create review popup
-      const popup = this.createCommentReviewPopup(comment, tweetElement, resolve);
-      document.body.appendChild(popup);
 
-      // Auto-approve after 10 seconds if no interaction
-      setTimeout(() => {
-        if (document.body.contains(popup)) {
-          document.body.removeChild(popup);
-          resolve({ approved: true, editedComment: null });
-        }
-      }, 10000);
-    });
-  }
-
-  createCommentReviewPopup(comment, tweetElement, callback) {
-    const popup = document.createElement('div');
-    popup.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      width: 300px;
-      background: white;
-      border: 2px solid #1da1f2;
-      border-radius: 12px;
-      padding: 16px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.15);
-      z-index: 10000;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    `;
-
-    popup.innerHTML = `
-      <div style="margin-bottom: 12px; font-weight: bold; color: #1da1f2;">
-        🤖 Review Comment
-      </div>
-      <div style="margin-bottom: 12px; padding: 8px; background: #f7f9fa; border-radius: 8px; font-size: 14px;">
-        "${comment}"
-      </div>
-      <div style="display: flex; gap: 8px;">
-        <button id="approve-btn" style="flex: 1; padding: 8px; background: #1da1f2; color: white; border: none; border-radius: 6px; cursor: pointer;">
-          ✓ Approve
-        </button>
-        <button id="edit-btn" style="flex: 1; padding: 8px; background: #657786; color: white; border: none; border-radius: 6px; cursor: pointer;">
-          ✏ Edit
-        </button>
-        <button id="skip-btn" style="flex: 1; padding: 8px; background: #f91880; color: white; border: none; border-radius: 6px; cursor: pointer;">
-          ✕ Skip
-        </button>
-      </div>
-      <div style="margin-top: 8px; font-size: 12px; color: #657786; text-align: center;">
-        Auto-approves in <span id="countdown">10</span>s
-      </div>
-    `;
-
-    // Countdown timer
-    let countdown = 10;
-    const countdownEl = popup.querySelector('#countdown');
-    const countdownInterval = setInterval(() => {
-      countdown--;
-      countdownEl.textContent = countdown;
-      if (countdown <= 0) {
-        clearInterval(countdownInterval);
-      }
-    }, 1000);
-
-    // Button handlers
-    popup.querySelector('#approve-btn').onclick = () => {
-      clearInterval(countdownInterval);
-      document.body.removeChild(popup);
-      callback({ approved: true, editedComment: null });
-    };
-
-    popup.querySelector('#skip-btn').onclick = () => {
-      clearInterval(countdownInterval);
-      document.body.removeChild(popup);
-      callback({ approved: false, editedComment: null });
-    };
-
-    popup.querySelector('#edit-btn').onclick = () => {
-      clearInterval(countdownInterval);
-      this.showCommentEditor(comment, popup, callback);
-    };
-
-    return popup;
-  }
-
-  showCommentEditor(originalComment, popup, callback) {
-    popup.innerHTML = `
-      <div style="margin-bottom: 12px; font-weight: bold; color: #1da1f2;">
-        ✏ Edit Comment
-      </div>
-      <textarea id="comment-editor" style="width: 100%; height: 60px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; resize: none; font-size: 14px;">${originalComment}</textarea>
-      <div style="display: flex; gap: 8px; margin-top: 12px;">
-        <button id="save-btn" style="flex: 1; padding: 8px; background: #1da1f2; color: white; border: none; border-radius: 6px; cursor: pointer;">
-          ✓ Save
-        </button>
-        <button id="cancel-btn" style="flex: 1; padding: 8px; background: #657786; color: white; border: none; border-radius: 6px; cursor: pointer;">
-          ✕ Cancel
-        </button>
-      </div>
-    `;
-
-    const textarea = popup.querySelector('#comment-editor');
-    textarea.focus();
-    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-
-    popup.querySelector('#save-btn').onclick = () => {
-      const editedComment = textarea.value.trim();
-      if (editedComment) {
-        document.body.removeChild(popup);
-        callback({ approved: true, editedComment: editedComment });
-      }
-    };
-
-    popup.querySelector('#cancel-btn').onclick = () => {
-      document.body.removeChild(popup);
-      callback({ approved: false, editedComment: null });
-    };
-  }
-
-  async postComment(tweetElement, comment) {
+  async openReplyAndPasteComment(tweetElement, comment) {
     try {
-      console.log('🚀 STARTING COMMENT POSTING - SIMPLIFIED APPROACH');
+      console.log('🚀 Opening reply window and pasting comment...');
 
       // Step 1: Find and click reply button
       const replyButton = this.findReplyButton(tweetElement);
@@ -679,9 +675,9 @@ class TwitterAutoEngagement {
 
       console.log('✅ Found reply button, clicking...');
       await this.humanClick(replyButton);
-      await this.humanDelay(2000, 3000); // Wait longer for UI to load
+      await this.humanDelay(2000, 3000); // Wait for UI to load
 
-      // Step 2: Wait for ANY contenteditable element to appear
+      // Step 2: Wait for compose box to appear
       console.log('🔍 Looking for compose box...');
       let composeBox = null;
 
@@ -709,57 +705,111 @@ class TwitterAutoEngagement {
         return false;
       }
 
-      // Step 3: Simple text insertion using execCommand
-      console.log(`💬 Inserting comment: "${comment}"`);
+      // Step 3: Paste the comment text
+      console.log(`💬 Pasting comment: "${comment}"`);
 
       // Focus and clear
       composeBox.focus();
       await this.humanDelay(500, 500);
 
-      // Use the most reliable method
+      // Use the most reliable method to paste text
       document.execCommand('selectAll', false, null);
       document.execCommand('insertText', false, comment);
 
-      await this.humanDelay(1000, 1500);
+      console.log('✅ Comment pasted in reply window. User can now manually review and post.');
 
-      // Step 4: Find and click post button
-      console.log('🔍 Looking for post button...');
+      // Wait for the user to either post or close the window
+      console.log('🔒 PAUSING EXTENSION - Waiting for manual user action...');
+      await this.waitForUserAction(composeBox);
+      console.log('🔓 RESUMING EXTENSION - User action completed');
 
-      // Look for post/reply button that appears after typing
-      let postButton = null;
-      const postSelectors = [
-        '[data-testid="tweetButton"]',
-        '[data-testid="tweetButtonInline"]'
-      ];
-
-      for (const selector of postSelectors) {
-        const buttons = document.querySelectorAll(selector);
-        for (const button of buttons) {
-          if (button.offsetParent !== null && !button.disabled) {
-            postButton = button;
-            console.log(`✅ Found post button: ${button.textContent}`);
-            break;
-          }
-        }
-        if (postButton) break;
-      }
-
-      if (!postButton) {
-        console.log('❌ Post button not found');
-        return false;
-      }
-
-      console.log('📤 Clicking post button...');
-      await this.humanClick(postButton);
-
-      await this.humanDelay(2000, 3000);
-      console.log('✅ COMMENT POSTED SUCCESSFULLY!');
       return true;
 
     } catch (error) {
-      console.error('❌ Comment posting failed:', error);
+      console.error('❌ Failed to open reply window:', error);
       return false;
     }
+  }
+
+  async waitForUserAction(composeBox) {
+    return new Promise((resolve) => {
+      console.log('⏳ Waiting for user to manually post or close reply window...');
+
+      let checkInterval;
+      let resolved = false;
+      let keyListener, clickListener;
+
+      const cleanup = () => {
+        if (checkInterval) clearInterval(checkInterval);
+        if (keyListener) document.removeEventListener('keydown', keyListener);
+        if (clickListener) document.removeEventListener('click', clickListener);
+      };
+
+      const resolveOnce = (reason) => {
+        if (!resolved) {
+          resolved = true;
+          console.log(`✅ User action detected (${reason}), continuing with next tweet`);
+          cleanup();
+          resolve();
+        }
+      };
+
+      // Simple but reliable checking every 2 seconds
+      checkInterval = setInterval(() => {
+        try {
+          // Primary check: Is the compose box still in the DOM and visible?
+          if (!document.body.contains(composeBox)) {
+            resolveOnce('compose box removed from DOM');
+            return;
+          }
+
+          if (!composeBox.offsetParent) {
+            resolveOnce('compose box hidden');
+            return;
+          }
+
+          // Secondary check: Is there still an active dialog containing our compose box?
+          const parentDialog = composeBox.closest('[role="dialog"]');
+          if (!parentDialog || !parentDialog.offsetParent) {
+            resolveOnce('parent dialog closed');
+            return;
+          }
+
+          // Log that we're still waiting
+          console.log('⏳ Still waiting for user action on reply window...');
+
+        } catch (error) {
+          console.error('Error in waitForUserAction:', error);
+          resolveOnce('error during check');
+        }
+      }, 2000);
+
+      // Listen for ESC key
+      keyListener = (event) => {
+        if (event.key === 'Escape') {
+          resolveOnce('ESC key pressed');
+        }
+      };
+      document.addEventListener('keydown', keyListener);
+
+      // Listen for clicks outside modal
+      clickListener = (event) => {
+        const parentDialog = composeBox.closest('[role="dialog"]');
+        if (parentDialog && !parentDialog.contains(event.target)) {
+          resolveOnce('clicked outside modal');
+        }
+      };
+
+      // Add click listener after small delay
+      setTimeout(() => {
+        document.addEventListener('click', clickListener);
+      }, 1000);
+
+      // Safety timeout (5 minutes)
+      setTimeout(() => {
+        resolveOnce('safety timeout');
+      }, 300000);
+    });
   }
 
   async insertTextSafely(element, text) {

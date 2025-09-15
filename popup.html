@@ -89,6 +89,22 @@
       transform: translateX(24px);
     }
 
+    .toggle-switch.small {
+      width: 36px;
+      height: 18px;
+      border-radius: 9px;
+    }
+
+    .toggle-switch.small::after {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+    }
+
+    .toggle-switch.small.active::after {
+      transform: translateX(18px);
+    }
+
     .stats-section {
       background: white;
       border-radius: 8px;
@@ -275,6 +291,25 @@
   <div class="main-toggle">
     <span class="toggle-label">Auto-Engagement</span>
     <div class="toggle-switch" id="mainToggle">
+    </div>
+  </div>
+
+  <div class="action-toggles" style="background: white; border-radius: 8px; padding: 12px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+    <div style="font-weight: 500; color: #14171a; margin-bottom: 12px;">Action Controls</div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <span style="font-size: 13px; color: #657786;">Auto-Liking</span>
+      <div class="toggle-switch small" id="likingToggle"></div>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <span style="font-size: 13px; color: #657786;">Auto-Commenting</span>
+      <div class="toggle-switch small" id="commentingToggle"></div>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <span style="font-size: 13px; color: #657786;">Include Image Posts</span>
+      <div class="toggle-switch small" id="includeImagesToggle"></div>
     </div>
   </div>
 

@@ -70,6 +70,19 @@ class PopupController {
       this.toggleExtension();
     });
 
+    // Action toggles
+    document.getElementById('likingToggle').addEventListener('click', () => {
+      this.toggleLiking();
+    });
+
+    document.getElementById('commentingToggle').addEventListener('click', () => {
+      this.toggleCommenting();
+    });
+
+    document.getElementById('includeImagesToggle').addEventListener('click', () => {
+      this.toggleIncludeImages();
+    });
+
     // API key visibility toggle
     document.getElementById('apiKeyToggle').addEventListener('click', () => {
       this.toggleApiKeyVisibility();
@@ -135,6 +148,29 @@ class PopupController {
     document.getElementById('commentTone').value = this.settings.commentTone || 'casual';
     document.getElementById('actionFrequency').value = this.settings.likeFrequency || 30;
     document.getElementById('aiModel').value = this.settings.aiModel || 'anthropic/claude-3-haiku';
+
+    // Update action toggles
+    const likingToggle = document.getElementById('likingToggle');
+    const commentingToggle = document.getElementById('commentingToggle');
+    const includeImagesToggle = document.getElementById('includeImagesToggle');
+
+    if (this.settings.enableLiking !== false) {
+      likingToggle.className = 'toggle-switch small active';
+    } else {
+      likingToggle.className = 'toggle-switch small';
+    }
+
+    if (this.settings.enableCommenting !== false) {
+      commentingToggle.className = 'toggle-switch small active';
+    } else {
+      commentingToggle.className = 'toggle-switch small';
+    }
+
+    if (this.settings.includeImages === true) {
+      includeImagesToggle.className = 'toggle-switch small active';
+    } else {
+      includeImagesToggle.className = 'toggle-switch small';
+    }
   }
 
   async toggleExtension() {
@@ -342,6 +378,78 @@ class PopupController {
     setTimeout(() => {
       errorEl.style.display = 'none';
     }, 5000);
+  }
+
+  async toggleLiking() {
+    try {
+      const newLikingState = this.settings.enableLiking === false ? true : false;
+
+      await chrome.storage.sync.set({ enableLiking: newLikingState });
+      this.settings.enableLiking = newLikingState;
+
+      // Notify content script
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs[0] && (tabs[0].url.includes('twitter.com') || tabs[0].url.includes('x.com'))) {
+        await chrome.tabs.sendMessage(tabs[0].id, {
+          type: 'UPDATE_SETTINGS',
+          settings: { enableLiking: newLikingState }
+        });
+      }
+
+      this.updateUI();
+      this.showSuccess(`Auto-liking ${newLikingState ? 'enabled' : 'disabled'}`);
+    } catch (error) {
+      console.error('Toggle liking error:', error);
+      this.showError('Failed to toggle liking');
+    }
+  }
+
+  async toggleCommenting() {
+    try {
+      const newCommentingState = this.settings.enableCommenting === false ? true : false;
+
+      await chrome.storage.sync.set({ enableCommenting: newCommentingState });
+      this.settings.enableCommenting = newCommentingState;
+
+      // Notify content script
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs[0] && (tabs[0].url.includes('twitter.com') || tabs[0].url.includes('x.com'))) {
+        await chrome.tabs.sendMessage(tabs[0].id, {
+          type: 'UPDATE_SETTINGS',
+          settings: { enableCommenting: newCommentingState }
+        });
+      }
+
+      this.updateUI();
+      this.showSuccess(`Auto-commenting ${newCommentingState ? 'enabled' : 'disabled'}`);
+    } catch (error) {
+      console.error('Toggle commenting error:', error);
+      this.showError('Failed to toggle commenting');
+    }
+  }
+
+  async toggleIncludeImages() {
+    try {
+      const newIncludeImagesState = this.settings.includeImages !== true ? true : false;
+
+      await chrome.storage.sync.set({ includeImages: newIncludeImagesState });
+      this.settings.includeImages = newIncludeImagesState;
+
+      // Notify content script
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs[0] && (tabs[0].url.includes('twitter.com') || tabs[0].url.includes('x.com'))) {
+        await chrome.tabs.sendMessage(tabs[0].id, {
+          type: 'UPDATE_SETTINGS',
+          settings: { includeImages: newIncludeImagesState }
+        });
+      }
+
+      this.updateUI();
+      this.showSuccess(`Include image posts ${newIncludeImagesState ? 'enabled' : 'disabled'}`);
+    } catch (error) {
+      console.error('Toggle include images error:', error);
+      this.showError('Failed to toggle include images');
+    }
   }
 
   async resetRateLimits() {

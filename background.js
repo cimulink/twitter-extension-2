@@ -1,122 +1,177 @@
 // Background service worker for Twitter Auto-Engagement Extension
 
-// Import templates (for service worker, we'll need to implement it differently)
-// Since service workers can't import ES modules directly, we'll include the class inline
-
-class CommentTemplates {
+// Intelligent Commenting System - Inline for service worker compatibility
+class IntelligentCommentGenerator {
   constructor() {
-    this.templates = this.initializeTemplates();
-  }
-
-  initializeTemplates() {
-    return {
-      engagement: [
-        "Great point! 💯",
-        "Thanks for sharing this!",
-        "Love this perspective! ✨",
-        "Really interesting take on this.",
-        "This is so helpful, thank you!",
-        "Excellent insight! 🔥",
-        "Appreciate you sharing this.",
-        "This resonates with me! 💪",
-        "Well said! ⭐",
-        "Couldn't agree more!"
-      ],
-      supportive: [
-        "You're doing amazing work! 🙌",
-        "Keep up the great content! 💯",
-        "This is inspiring! ✨",
-        "Love seeing your progress! 🚀",
-        "You've got this! 💪",
-        "So proud of your journey! ❤️",
-        "Keep pushing forward! 🔥",
-        "Your dedication shows! ⭐",
-        "Amazing achievement! 🎉",
-        "You're killing it! 💫"
-      ],
-      question: [
-        "What's your take on this?",
-        "How did you learn this?",
-        "Any tips for getting started?",
-        "What would you recommend?",
-        "How long did this take you?",
-        "What's your experience with this?",
-        "Any resources you'd suggest?",
-        "What challenges did you face?",
-        "How do you approach this?",
-        "What's next for you?"
-      ],
-      professional: [
-        "Excellent insight.",
-        "Thank you for sharing your expertise.",
-        "This is very valuable information.",
-        "Well articulated perspective.",
-        "Appreciate this thoughtful analysis.",
-        "Great breakdown here.",
-        "Insightful observations.",
-        "This adds significant value.",
-        "Professional insight as always.",
-        "Comprehensive overview, thank you."
-      ]
+    this.persona = {
+      identity: "Software Architect & Founder with 10+ years in distributed systems",
+      expertise: ["distributed-systems", "backend-engineering", "ai-infrastructure", "fintech", "scalability"],
+      tone: "analytical, mentor-like, credible, grounded"
     };
+
+
   }
 
-  generateComment(postContent, tone = 'casual') {
-    let templates = [];
+  analyzeContent(content) {
+    const analysis = {
+      topics: ['general'], // Always assume general relevance
+      responseType: 'engagement',
+      shouldRespond: true, // ALWAYS TRUE - let AI decide
+      reasoning: 'Passing to AI for intelligent evaluation'
+    };
 
-    switch (tone) {
-      case 'supportive':
-        templates = this.templates.supportive;
-        break;
-      case 'professional':
-        templates = this.templates.professional;
-        break;
-      case 'casual':
-      default:
-        templates = this.templates.engagement;
-        // Add question templates occasionally
-        if (Math.random() < 0.3) {
-          templates = [...templates, ...this.templates.question];
-        }
-        break;
+    const lowerContent = content.toLowerCase();
+    console.log('🔍 Sending content to AI for evaluation:', lowerContent);
+
+    // Determine response type based on content patterns
+    if (lowerContent.includes('?') || lowerContent.includes('how') || lowerContent.includes('what') || lowerContent.includes('why')) {
+      analysis.responseType = 'helpful-answer';
+    } else if (lowerContent.includes('struggling') || lowerContent.includes('help') || lowerContent.includes('stuck')) {
+      analysis.responseType = 'supportive-advice';
+    } else if (lowerContent.includes('built') || lowerContent.includes('shipped') || lowerContent.includes('launched')) {
+      analysis.responseType = 'constructive-feedback';
+    } else {
+      analysis.responseType = 'thoughtful-engagement';
     }
 
-    return templates[Math.floor(Math.random() * templates.length)];
+    console.log('✅ Content passed to AI - no pre-filtering');
+    return analysis;
   }
 
-  getFallbackComment(tone) {
-    const templates = {
-      casual: this.templates.engagement,
-      supportive: this.templates.supportive,
-      professional: this.templates.professional
+  buildIntelligentPrompt(content, analysis) {
+    if (!analysis.shouldRespond) return null;
+
+    const responseGuidance = this.getResponseGuidance(analysis.responseType);
+
+    // Check if content includes image context
+    const hasImageContext = content.includes('[Image context:');
+    const imageInstructions = hasImageContext ?
+      '\n- Consider the visual context when responding\n- Reference the image/media if relevant to your expertise' : '';
+
+    return `You are Ajay, a software architect and founder with 10+ years in distributed systems, having worked at FinTech unicorn Slice, Arcesium, Prudential, and SAP. You founded Cimulink.
+
+TWEET TO RESPOND TO:
+"${content}"
+
+CONTEXT:
+- Response type: ${analysis.responseType}
+- Your expertise: Distributed systems, backend engineering, AI infrastructure, fintech, startup building, engineering leadership${hasImageContext ? '\n- Post includes visual content - see image context above' : ''}
+
+RESPONSE GUIDANCE:
+${responseGuidance}
+
+CRITICAL DECISION:
+First, determine if this tweet is worth responding to. Consider:
+- Avoid political content, controversial topics, or divisive discussions
+- Does it relate to software engineering, startups, technology, or business?
+- Would your response add genuine value or insight?
+- Is it substantial enough to warrant engagement?
+
+If YES, proceed with response. If NO, respond with exactly: "SKIP_NOT_RELEVANT: [brief reason]" (e.g., "SKIP_NOT_RELEVANT: Political content" or "SKIP_NOT_RELEVANT: Off-topic spam")
+
+WRITING STYLE REQUIREMENTS:
+- Write like you'd speak (casual but smart)
+- Active voice, not passive
+- Under 280 characters
+- First-principles thinking
+- Add genuine value
+- Mentor-like tone
+- No buzzwords or hype${imageInstructions}
+
+WHAT NOT TO DO:
+- Don't just agree or disagree
+- Don't use generic responses
+- Don't overshare credentials
+- Don't be salesy
+- Don't describe what you see in images unless it adds technical value
+- Don't use hashtags (#) in your response
+- Don't use @mentions unless directly responding to someone
+
+Generate a thoughtful response that adds real value, or respond "SKIP_NOT_RELEVANT" if not worth engaging:`;
+  }
+
+
+  getResponseGuidance(responseType) {
+    const guidance = {
+      "helpful-answer": "Provide a concise, practical answer based on your experience. Share a specific insight or approach.",
+      "supportive-advice": "Offer constructive guidance. Share a quick win or perspective that might help.",
+      "constructive-feedback": "Acknowledge the achievement and add a thoughtful observation or question that could be valuable.",
+      "expert-insight": "Share a specific technical insight or trade-off from your experience. Be concrete.",
+      "thoughtful-engagement": "Ask a probing question or share a brief related insight that advances the conversation."
     };
 
-    const selectedTemplates = templates[tone] || templates.casual;
-    return selectedTemplates[Math.floor(Math.random() * selectedTemplates.length)];
+    return guidance[responseType] || "Engage thoughtfully with a perspective that adds value to the discussion.";
   }
 
-  validateComment(comment) {
-    const issues = [];
+  generateFallbackComment(analysis) {
+    if (analysis.topics.length > 0) {
+      const topic = analysis.topics[0].topic;
+      const fallbacks = {
+        "distributed-systems": "What's your approach to handling the consistency/availability trade-offs here?",
+        "backend-engineering": "Performance considerations are often overlooked early on. How are you thinking about this?",
+        "ai-infrastructure": "The infrastructure challenges here are interesting. What's your scaling strategy?",
+        "fintech": "Regulatory compliance adds complexity. How are you handling that aspect?",
+        "startup": "Trade-offs are everything in early stage. What's driving this decision?",
+        "engineering-culture": "Team dynamics matter more than tech choices. How's the team thinking about this?",
+        "tech-trends": "Business value should drive tech decisions. What problem does this solve?"
+      };
 
-    if (comment.length < 3) {
-      issues.push('Too short');
+      return fallbacks[topic] || "Interesting perspective. What led you to this approach?";
+    }
+
+    return "What's the thinking behind this?";
+  }
+
+  // Validate comment to ensure quality and compliance
+  validateComment(comment) {
+    if (!comment || typeof comment !== 'string') {
+      console.log('❌ Comment validation failed: Invalid comment');
+      return false;
+    }
+
+    // Check for hashtags
+    if (comment.includes('#')) {
+      console.log('❌ Comment validation failed: Contains hashtags');
+      return false;
+    }
+
+    // Check for @mentions (unless it's a direct reply context)
+    if (comment.includes('@')) {
+      console.log('❌ Comment validation failed: Contains @mentions');
+      return false;
+    }
+
+    // Check for generic/spam phrases
+    const spamPhrases = [
+      'great post', 'thanks for sharing', 'love this', 'awesome',
+      'totally agree', 'this is amazing', 'so true', 'exactly',
+      'follow me', 'check out', 'link in bio', 'dm me'
+    ];
+
+    const lowerComment = comment.toLowerCase();
+    for (const phrase of spamPhrases) {
+      if (lowerComment.includes(phrase)) {
+        console.log(`❌ Comment validation failed: Contains spam phrase "${phrase}"`);
+        return false;
+      }
+    }
+
+    // Check length
+    if (comment.length < 10) {
+      console.log('❌ Comment validation failed: Too short');
+      return false;
     }
 
     if (comment.length > 280) {
-      issues.push('Too long for Twitter');
+      console.log('❌ Comment validation failed: Too long');
+      return false;
     }
 
-    const spamKeywords = ['follow', 'subscribe', 'check out', 'link in bio', 'dm me', 'buy now'];
-    if (spamKeywords.some(keyword => comment.toLowerCase().includes(keyword))) {
-      issues.push('Looks like spam');
-    }
-
-    return {
-      valid: issues.length === 0,
-      issues: issues
-    };
+    console.log('✅ Comment passed validation');
+    return true;
   }
 }
+
 
 class BackgroundService {
   constructor() {
@@ -144,6 +199,9 @@ class BackgroundService {
       console.log('No existing settings found, setting defaults');
       const defaultSettings = {
         enabled: false,
+        enableLiking: true,
+        enableCommenting: true,
+        includeImages: false, // Default to text-only for safety
         openRouterApiKey: '',
         commentTone: 'casual',
         likeFrequency: 15, // seconds between likes (reduced from 30)
@@ -163,8 +221,14 @@ class BackgroundService {
     try {
       switch (message.type) {
         case 'GENERATE_COMMENT':
-          const comment = await this.generateCommentWithTemplates(message.postContent, message.settings);
-          sendResponse({ success: true, comment });
+          const result = await this.generateCommentWithIntelligence(message.postContent, message.settings);
+          if (result && result.comment) {
+            sendResponse({ success: true, comment: result.comment });
+          } else if (result && result.error) {
+            sendResponse({ success: false, error: result.error });
+          } else {
+            sendResponse({ success: false, error: 'Unknown error in comment generation' });
+          }
           break;
 
         case 'GET_SETTINGS':
@@ -254,49 +318,128 @@ Comment:`;
   }
 
   getFallbackComment(tone, postContent = '') {
-    // Load template system
-    if (!this.commentTemplates) {
-      this.commentTemplates = new CommentTemplates();
-    }
-
-    // Try to generate from templates first
-    if (postContent) {
-      const templateComment = this.commentTemplates.generateComment(postContent, tone);
-      const validation = this.commentTemplates.validateComment(templateComment);
-
-      if (validation.valid) {
-        return templateComment;
-      }
-    }
-
-    // Fallback to simple comments
-    return this.commentTemplates.getFallbackComment(tone);
+    // No template fallback - intelligent generation only
+    console.log('❌ Template fallback disabled - intelligent generation only');
+    return null;
   }
 
-  // Enhanced comment generation with templates
-  async generateCommentWithTemplates(postContent, settings) {
-    if (!this.commentTemplates) {
-      this.commentTemplates = new CommentTemplates();
+  // Enhanced comment generation with intelligent analysis
+  async generateCommentWithIntelligence(postContent, settings) {
+    if (!this.intelligentGenerator) {
+      this.intelligentGenerator = new IntelligentCommentGenerator();
     }
 
+
     try {
-      // First try AI generation
-      const aiComment = await this.generateComment(postContent, settings);
+      console.log('🧠 Analyzing content for intelligent response...');
+      console.log('📝 Post content:', postContent);
 
-      // Validate AI comment
-      const validation = this.commentTemplates.validateComment(aiComment);
+      // Analyze content first
+      const analysis = this.intelligentGenerator.analyzeContent(postContent);
 
-      if (validation.valid) {
-        return aiComment;
-      } else {
-        console.log('AI comment failed validation:', validation.issues);
-        // Fall back to template system
-        return this.commentTemplates.generateComment(postContent, settings.commentTone);
+      console.log('🔍 Analysis result:', {
+        shouldRespond: analysis.shouldRespond,
+        reasoning: analysis.reasoning,
+        responseType: analysis.responseType
+      });
+
+      if (!analysis.shouldRespond) {
+        const errorMsg = `❌ Skipping comment: ${analysis.reasoning}`;
+        console.log(errorMsg);
+        return { error: errorMsg };
       }
+
+      console.log(`✅ Content analysis: AI will decide relevance (${analysis.responseType})`);
+
+      // Build intelligent prompt
+      const intelligentPrompt = this.intelligentGenerator.buildIntelligentPrompt(postContent, analysis);
+
+      if (intelligentPrompt) {
+        // Try AI with intelligent prompt
+        const aiComment = await this.generateCommentWithPrompt(intelligentPrompt, settings);
+
+        if (aiComment && aiComment.startsWith('SKIP_NOT_RELEVANT')) {
+          let reason = 'No specific reason provided';
+          if (aiComment.includes(':')) {
+            reason = aiComment.split(':')[1].trim();
+          }
+          const errorMsg = `🤖 AI determined content not relevant for engagement: ${reason}`;
+          console.log(errorMsg);
+          return { error: errorMsg };
+        } else if (aiComment && aiComment.length > 10 && aiComment.length < 280 && this.intelligentGenerator.validateComment(aiComment)) {
+          console.log('✅ Generated intelligent AI comment');
+          return { comment: aiComment };
+        } else {
+          const validationResult = this.intelligentGenerator.validateComment(aiComment);
+          let errorMsg = `⚠️ AI comment failed validation: Length=${aiComment?.length || 0}`;
+
+          if (!aiComment) {
+            errorMsg += ' (AI returned null/empty response)';
+          } else if (aiComment.length <= 10) {
+            errorMsg += ' (Too short)';
+          } else if (aiComment.length >= 280) {
+            errorMsg += ' (Too long)';
+          } else if (!validationResult) {
+            errorMsg += ' (Failed content validation - check console for details)';
+          }
+
+          console.log(errorMsg);
+          // Continue to fallback instead of returning error
+        }
+      }
+
+      // No fallback - if AI can't generate a good comment, skip it
+      const errorMsg = '⚡ AI generation failed - no suitable comment generated';
+      console.log(errorMsg);
+      return { error: errorMsg };
+
     } catch (error) {
-      console.error('AI comment generation failed:', error);
-      // Fall back to template system
-      return this.commentTemplates.generateComment(postContent, settings.commentTone);
+      const errorMsg = `❌ Exception in comment generation: ${error.message}`;
+      console.error('Intelligent comment generation failed:', error);
+      return { error: errorMsg };
+    }
+  }
+
+  async generateCommentWithPrompt(prompt, settings) {
+    try {
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${settings.openRouterApiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': chrome.runtime.getURL(''),
+          'X-Title': 'Twitter Auto-Engagement Extension'
+        },
+        body: JSON.stringify({
+          model: settings.aiModel || 'anthropic/claude-3-haiku',
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 150,
+          temperature: 0.7
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error(`Invalid API response format: ${JSON.stringify(data)}`);
+      }
+
+      const comment = data.choices[0].message.content.trim();
+      console.log('🤖 AI Response:', comment);
+      return comment;
+    } catch (error) {
+      console.error('OpenRouter API call failed:', error);
+      throw error;
     }
   }
 
