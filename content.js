@@ -141,7 +141,14 @@ class TwitterAutoEngagement {
     // Find all tweet containers
     const tweets = this.findTweets();
 
-    if (tweets.length === 0) return;
+    console.log(`📊 Found ${tweets.length} tweets on page`);
+
+    // If no tweets found, auto-scroll to load more
+    if (tweets.length === 0) {
+      console.log('🔄 No tweets found on page - auto-scrolling to load more content');
+      await this.autoScrollToLoadMore();
+      return;
+    }
 
     // Try to find a tweet we can actually process (not rate limited)
     let tweetToProcess = null;
@@ -178,19 +185,27 @@ class TwitterAutoEngagement {
   }
 
   areAllTweetsProcessed(tweets) {
+    // If no tweets provided, consider all processed
+    if (!tweets || tweets.length === 0) {
+      console.log(`📊 Processed status: No tweets to check - considering all processed`);
+      return true;
+    }
+
     // Check if all visible tweets have been processed
-    let allProcessed = true;
+    let processedCount = 0;
+    let unprocessedCount = 0;
 
     for (const tweet of tweets) {
       const tweetId = this.getTweetId(tweet);
       if (tweetId && !this.hasProcessedTweet(tweetId)) {
-        // Found an unprocessed tweet
-        allProcessed = false;
-        break;
+        unprocessedCount++;
+      } else if (tweetId) {
+        processedCount++;
       }
     }
 
-    console.log(`📊 Processed status: ${allProcessed ? 'All tweets processed' : 'Some tweets unprocessed'}`);
+    const allProcessed = unprocessedCount === 0;
+    console.log(`📊 Processed status: ${processedCount} processed, ${unprocessedCount} unprocessed - ${allProcessed ? 'All tweets processed' : 'Some tweets unprocessed'}`);
     return allProcessed;
   }
 
@@ -282,7 +297,7 @@ class TwitterAutoEngagement {
       return isUnprocessed;
     });
 
-    console.log(`Found ${unprocessedTweets.length} unprocessed tweets`);
+    console.log(`📊 Tweet analysis: Found ${tweets.length} total tweets, ${unprocessedTweets.length} unprocessed tweets`);
     return unprocessedTweets;
   }
 

@@ -380,10 +380,11 @@ Comment:`;
 
       // Build intelligent prompt
       const intelligentPrompt = this.intelligentGenerator.buildIntelligentPrompt(postContent, analysis);
+      let aiComment = null; // Declare aiComment in the broader scope
 
       if (intelligentPrompt) {
         // Try AI with intelligent prompt
-        const aiComment = await this.generateCommentWithPrompt(intelligentPrompt, settings);
+        aiComment = await this.generateCommentWithPrompt(intelligentPrompt, settings);
 
         if (aiComment && aiComment.startsWith('SKIP_NOT_RELEVANT')) {
           let reason = 'No specific reason provided';
@@ -422,7 +423,7 @@ Comment:`;
       }
 
       // No fallback - if AI can't generate a good comment, skip it
-      const errorMsg = `⚡ AI generation failed - no suitable comment generated. AI returned: "${aiComment}"`;
+      const errorMsg = `⚡ AI generation failed - no suitable comment generated. AI returned: "${aiComment || 'null/undefined'}"`;
       console.log(errorMsg);
       return { error: errorMsg };
 
