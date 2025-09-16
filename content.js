@@ -518,9 +518,47 @@ class TwitterAutoEngagement {
     }
   }
 
+  // Check if this tweet is from the user themselves
+  isOwnTweet(tweetElement) {
+    try {
+      // Look for the author name/username in the tweet
+      const authorSelectors = [
+        '[data-testid="User-Name"]',
+        '[data-testid="User-Names"]',
+        'a[href*="/"] span',
+        '[dir="ltr"] span'
+      ];
+
+      for (const selector of authorSelectors) {
+        const authorElements = tweetElement.querySelectorAll(selector);
+        for (const element of authorElements) {
+          const text = element.textContent?.toLowerCase() || '';
+          // Check for your name or username variations
+          if (text.includes('ajay kaaran gupta') ||
+              text.includes('ajay') && text.includes('gupta') ||
+              text.includes('@ajay')) {
+            console.log(`🔍 Detected own tweet by author: "${text}"`);
+            return true;
+          }
+        }
+      }
+
+      return false;
+    } catch (error) {
+      console.log('Error checking if own tweet:', error);
+      return false; // If error, assume it's not own tweet
+    }
+  }
+
   // Check if we should comment on this post based on settings and content
   shouldCommentOnPost(tweetElement) {
     try {
+      // First check if this is our own tweet
+      if (this.isOwnTweet(tweetElement)) {
+        console.log('❌ Skipping own tweet');
+        return false;
+      }
+
       const includeImages = this.settings.includeImages === true;
 
       // Check for media indicators

@@ -3,13 +3,7 @@
 // Intelligent Commenting System - Inline for service worker compatibility
 class IntelligentCommentGenerator {
   constructor() {
-    this.persona = {
-      identity: "Software Architect & Founder with 10+ years in distributed systems",
-      expertise: ["distributed-systems", "backend-engineering", "ai-infrastructure", "fintech", "scalability"],
-      tone: "analytical, mentor-like, credible, grounded"
-    };
-
-
+    // Persona is now defined in persona.md and used directly in buildIntelligentPrompt
   }
 
   analyzeContent(content) {
@@ -48,46 +42,9 @@ class IntelligentCommentGenerator {
     const imageInstructions = hasImageContext ?
       '\n- Consider the visual context when responding\n- Reference the image/media if relevant to your expertise' : '';
 
-    return `You are Ajay, a software architect and founder with 10+ years in distributed systems, having worked at FinTech unicorn Slice, Arcesium, Prudential, and SAP. You founded Cimulink.
+    const simplePrompt = `create casual reply to this tweet within 20 words, no emojis: "${content}"`;
 
-TWEET TO RESPOND TO:
-"${content}"
-
-CONTEXT:
-- Response type: ${analysis.responseType}
-- Your expertise: Distributed systems, backend engineering, AI infrastructure, fintech, startup building, engineering leadership${hasImageContext ? '\n- Post includes visual content - see image context above' : ''}
-
-RESPONSE GUIDANCE:
-${responseGuidance}
-
-CRITICAL DECISION:
-First, determine if this tweet is worth responding to. Consider:
-- Avoid political content, controversial topics, or divisive discussions
-- Does it relate to software engineering, startups, technology, or business?
-- Would your response add genuine value or insight?
-- Is it substantial enough to warrant engagement?
-
-If YES, proceed with response. If NO, respond with exactly: "SKIP_NOT_RELEVANT: [brief reason]" (e.g., "SKIP_NOT_RELEVANT: Political content" or "SKIP_NOT_RELEVANT: Off-topic spam")
-
-WRITING STYLE REQUIREMENTS:
-- Write like you'd speak (casual but smart)
-- Active voice, not passive
-- Under 280 characters
-- First-principles thinking
-- Add genuine value
-- Mentor-like tone
-- No buzzwords or hype${imageInstructions}
-
-WHAT NOT TO DO:
-- Don't just agree or disagree
-- Don't use generic responses
-- Don't overshare credentials
-- Don't be salesy
-- Don't describe what you see in images unless it adds technical value
-- Don't use hashtags (#) in your response
-- Don't use @mentions unless directly responding to someone
-
-Generate a thoughtful response that adds real value, or respond "SKIP_NOT_RELEVANT" if not worth engaging:`;
+    return simplePrompt;
   }
 
 
@@ -366,16 +323,20 @@ Comment:`;
           const errorMsg = `🤖 AI determined content not relevant for engagement: ${reason}`;
           console.log(errorMsg);
           return { error: errorMsg };
-        } else if (aiComment && aiComment.length > 10 && aiComment.length < 280 && this.intelligentGenerator.validateComment(aiComment)) {
+        } else if (aiComment && aiComment.length > 1 && aiComment.length < 280 && this.intelligentGenerator.validateComment(aiComment)) {
           console.log('✅ Generated intelligent AI comment');
           return { comment: aiComment };
         } else {
           const validationResult = this.intelligentGenerator.validateComment(aiComment);
           let errorMsg = `⚠️ AI comment failed validation: Length=${aiComment?.length || 0}`;
 
+          // Log the actual AI response for debugging
+          console.log(`🔍 RAW AI RESPONSE: "${aiComment}"`);
+          console.log(`🔍 AI RESPONSE TYPE: ${typeof aiComment}`);
+
           if (!aiComment) {
             errorMsg += ' (AI returned null/empty response)';
-          } else if (aiComment.length <= 10) {
+          } else if (aiComment.length <= 1) {
             errorMsg += ' (Too short)';
           } else if (aiComment.length >= 280) {
             errorMsg += ' (Too long)';
@@ -389,7 +350,7 @@ Comment:`;
       }
 
       // No fallback - if AI can't generate a good comment, skip it
-      const errorMsg = '⚡ AI generation failed - no suitable comment generated';
+      const errorMsg = `⚡ AI generation failed - no suitable comment generated. AI returned: "${aiComment}"`;
       console.log(errorMsg);
       return { error: errorMsg };
 
