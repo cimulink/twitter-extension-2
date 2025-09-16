@@ -7,14 +7,41 @@ class IntelligentCommentGenerator {
   }
 
   analyzeContent(content) {
+    const lowerContent = content.toLowerCase();
+
+    // AGGRESSIVE POLITICAL CONTENT DETECTION
+    const politicalKeywords = [
+      'trump', 'biden', 'democrat', 'republican', 'conservative', 'liberal',
+      'election', 'vote', 'voting', 'ballot', 'campaign', 'politician',
+      'politics', 'political', 'congress', 'senate', 'house', 'government',
+      'gop', 'dnc', 'maga', 'blm', 'antifa', 'immigration', 'border',
+      'abortion', 'gun control', 'climate change', 'healthcare reform',
+      'taxes', 'welfare', 'socialism', 'capitalism', 'fascism', 'communism',
+      'president', 'governor', 'mayor', 'covid policy', 'mandate',
+      'protest', 'rally', 'march', 'activism', 'justice', 'rights',
+      'constitution', 'amendment', 'supreme court', 'federal', 'state policy'
+    ];
+
+    // Check for political content
+    for (const keyword of politicalKeywords) {
+      if (lowerContent.includes(keyword)) {
+        console.log(`❌ POLITICAL CONTENT DETECTED: "${keyword}" - SKIPPING`);
+        return {
+          topics: ['political'],
+          responseType: 'skip',
+          shouldRespond: false,
+          reasoning: `Contains political keyword: ${keyword}`
+        };
+      }
+    }
+
     const analysis = {
       topics: ['general'], // Always assume general relevance
       responseType: 'engagement',
-      shouldRespond: true, // ALWAYS TRUE - let AI decide
-      reasoning: 'Passing to AI for intelligent evaluation'
+      shouldRespond: true, // ALWAYS TRUE - let AI decide after political check
+      reasoning: 'Passed political filter, sending to AI for evaluation'
     };
 
-    const lowerContent = content.toLowerCase();
     console.log('🔍 Sending content to AI for evaluation:', lowerContent);
 
     // Determine response type based on content patterns
@@ -42,7 +69,7 @@ class IntelligentCommentGenerator {
     const imageInstructions = hasImageContext ?
       '\n- Consider the visual context when responding\n- Reference the image/media if relevant to your expertise' : '';
 
-    const simplePrompt = `create casual reply to this tweet within 20 words, no emojis: "${content}"`;
+    const simplePrompt = `You must generate a casual reply to this specific tweet. Reply within 20 words, no emojis, ENGLISH ONLY. AVOID ALL POLITICAL CONTENT. The tweet you are replying to is: "${content}"`;
 
     return simplePrompt;
   }
@@ -77,6 +104,48 @@ class IntelligentCommentGenerator {
     }
 
     return "What's the thinking behind this?";
+  }
+
+  // Check if comment is in English only
+  isEnglishOnly(comment) {
+    if (!comment || typeof comment !== 'string') {
+      console.log('❌ Language check failed: Invalid comment');
+      return false;
+    }
+
+    // Basic English character check - allow only Latin characters, numbers, and common punctuation
+    const englishRegex = /^[a-zA-Z0-9\s\.,!?;:'"()\-_&@#$%\+\=\[\]\{\}\/\\`~\*]*$/;
+
+    if (!englishRegex.test(comment)) {
+      console.log('❌ Language check failed: Contains non-English characters');
+      console.log(`🔍 Problematic comment: "${comment}"`);
+      return false;
+    }
+
+    // Check for common non-English words/patterns
+    const nonEnglishPatterns = [
+      // Common non-English greetings/words
+      /\b(hola|bonjour|guten|ciao|नमस्ते|こんにちは|你好|مرحبا|привет|hej|здравствуйте)\b/i,
+      // Arabic/Hebrew patterns
+      /[\u0600-\u06FF\u0590-\u05FF]/,
+      // Chinese/Japanese/Korean characters
+      /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/,
+      // Cyrillic
+      /[\u0400-\u04FF]/,
+      // Other common scripts
+      /[\u0100-\u017F\u1E00-\u1EFF]/
+    ];
+
+    for (const pattern of nonEnglishPatterns) {
+      if (pattern.test(comment)) {
+        console.log('❌ Language check failed: Detected non-English pattern');
+        console.log(`🔍 Pattern detected in: "${comment}"`);
+        return false;
+      }
+    }
+
+    console.log('✅ Language check passed: English only');
+    return true;
   }
 
   // Validate comment to ensure quality and compliance
@@ -159,6 +228,7 @@ class BackgroundService {
         enableLiking: true,
         enableCommenting: true,
         includeImages: false, // Default to text-only for safety
+        fullAutoMode: false, // Default to manual approval mode
         openRouterApiKey: '',
         commentTone: 'casual',
         likeFrequency: 15, // seconds between likes (reduced from 30)
@@ -323,7 +393,7 @@ Comment:`;
           const errorMsg = `🤖 AI determined content not relevant for engagement: ${reason}`;
           console.log(errorMsg);
           return { error: errorMsg };
-        } else if (aiComment && aiComment.length > 1 && aiComment.length < 280 && this.intelligentGenerator.validateComment(aiComment)) {
+        } else if (aiComment && aiComment.length > 1 && aiComment.length < 280 && this.intelligentGenerator.validateComment(aiComment) && this.intelligentGenerator.isEnglishOnly(aiComment)) {
           console.log('✅ Generated intelligent AI comment');
           return { comment: aiComment };
         } else {
@@ -340,6 +410,8 @@ Comment:`;
             errorMsg += ' (Too short)';
           } else if (aiComment.length >= 280) {
             errorMsg += ' (Too long)';
+          } else if (!this.intelligentGenerator.isEnglishOnly(aiComment)) {
+            errorMsg += ' (Failed language check - not English only)';
           } else if (!validationResult) {
             errorMsg += ' (Failed content validation - check console for details)';
           }

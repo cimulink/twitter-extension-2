@@ -83,6 +83,10 @@ class PopupController {
       this.toggleIncludeImages();
     });
 
+    document.getElementById('fullAutoToggle').addEventListener('click', () => {
+      this.toggleFullAuto();
+    });
+
     // API key visibility toggle
     document.getElementById('apiKeyToggle').addEventListener('click', () => {
       this.toggleApiKeyVisibility();
@@ -170,6 +174,14 @@ class PopupController {
       includeImagesToggle.className = 'toggle-switch small active';
     } else {
       includeImagesToggle.className = 'toggle-switch small';
+    }
+
+    // Full auto toggle
+    const fullAutoToggle = document.getElementById('fullAutoToggle');
+    if (this.settings.fullAutoMode === true) {
+      fullAutoToggle.className = 'toggle-switch small active';
+    } else {
+      fullAutoToggle.className = 'toggle-switch small';
     }
   }
 
@@ -449,6 +461,29 @@ class PopupController {
     } catch (error) {
       console.error('Toggle include images error:', error);
       this.showError('Failed to toggle include images');
+    }
+  }
+
+  async toggleFullAuto() {
+    try {
+      const newFullAutoState = this.settings.fullAutoMode !== true ? true : false;
+      await chrome.storage.sync.set({ fullAutoMode: newFullAutoState });
+      this.settings.fullAutoMode = newFullAutoState;
+
+      // Notify content script
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs[0] && (tabs[0].url.includes('twitter.com') || tabs[0].url.includes('x.com'))) {
+        await chrome.tabs.sendMessage(tabs[0].id, {
+          type: 'UPDATE_SETTINGS',
+          settings: { fullAutoMode: newFullAutoState }
+        });
+      }
+
+      this.updateUI();
+      this.showSuccess(`Full auto mode ${newFullAutoState ? 'enabled' : 'disabled'}`);
+    } catch (error) {
+      console.error('Toggle full auto error:', error);
+      this.showError('Failed to toggle full auto mode');
     }
   }
 

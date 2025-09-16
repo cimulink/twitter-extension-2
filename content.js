@@ -9,6 +9,8 @@ class TwitterAutoEngagement {
     this.lastCommentTime = 0;
     this.actionCount = { likes: 0, comments: 0 };
     this.sessionStartTime = Date.now();
+    this.lastScrollTime = 0;
+    this.scrollCooldown = 10000; // 10 seconds between scrolls
 
     this.init();
   }
@@ -160,8 +162,90 @@ class TwitterAutoEngagement {
     if (tweetToProcess) {
       await this.processTweet(tweetToProcess);
     } else {
-      console.log('All tweets are rate limited, will retry on next scan');
-      // Don't mark any tweets as processed - they'll be retried
+      console.log('No processable tweets found - checking if we should scroll');
+
+      // Check if all visible tweets are processed or rate limited
+      const allTweetsProcessed = this.areAllTweetsProcessed(tweets);
+
+      if (allTweetsProcessed) {
+        console.log('🔄 All visible tweets processed - auto-scrolling to load more content');
+        await this.autoScrollToLoadMore();
+      } else {
+        console.log('All tweets are rate limited, will retry on next scan');
+        // Don't mark any tweets as processed - they'll be retried
+      }
+    }
+  }
+
+  areAllTweetsProcessed(tweets) {
+    // Check if all visible tweets have been processed
+    let allProcessed = true;
+
+    for (const tweet of tweets) {
+      const tweetId = this.getTweetId(tweet);
+      if (tweetId && !this.hasProcessedTweet(tweetId)) {
+        // Found an unprocessed tweet
+        allProcessed = false;
+        break;
+      }
+    }
+
+    console.log(`📊 Processed status: ${allProcessed ? 'All tweets processed' : 'Some tweets unprocessed'}`);
+    return allProcessed;
+  }
+
+  async autoScrollToLoadMore() {
+    try {
+      // Check cooldown to prevent excessive scrolling
+      const now = Date.now();
+      if (now - this.lastScrollTime < this.scrollCooldown) {
+        const remainingCooldown = Math.ceil((this.scrollCooldown - (now - this.lastScrollTime)) / 1000);
+        console.log(`📜 Auto-scroll on cooldown for ${remainingCooldown}s more`);
+        return;
+      }
+
+      console.log('📜 Starting auto-scroll to load more tweets...');
+
+      // Get current scroll position
+      const currentScrollY = window.scrollY;
+      const documentHeight = document.documentElement.scrollHeight;
+      const windowHeight = window.innerHeight;
+
+      // Check if we're already at the bottom
+      if (currentScrollY + windowHeight >= documentHeight - 100) {
+        console.log('📜 Already at bottom of page');
+        return;
+      }
+
+      // Smooth scroll down by a reasonable amount
+      const scrollAmount = windowHeight * 0.8; // Scroll down 80% of viewport height
+      const targetScrollY = currentScrollY + scrollAmount;
+
+      window.scrollTo({
+        top: targetScrollY,
+        behavior: 'smooth'
+      });
+
+      console.log(`📜 Scrolled from ${currentScrollY} to ${targetScrollY}`);
+
+      // Wait for scroll to complete and new content to load
+      await this.humanDelay(2000, 3000);
+
+      // Check if new tweets were loaded
+      const newTweets = this.findTweets();
+      console.log(`📜 After scroll: Found ${newTweets.length} tweets`);
+
+      // If no new tweets after scrolling, try a longer wait
+      if (newTweets.length === 0) {
+        console.log('📜 No new tweets loaded, waiting longer...');
+        await this.humanDelay(3000, 5000);
+      }
+
+      // Update last scroll time
+      this.lastScrollTime = Date.now();
+
+    } catch (error) {
+      console.error('❌ Auto-scroll error:', error);
     }
   }
 
@@ -501,17 +585,32 @@ class TwitterAutoEngagement {
 
       console.log(`✅ Generated comment: "${response.comment}"`);
 
-      // Open reply window and paste comment (no auto-posting)
-      const success = await this.openReplyAndPasteComment(tweetElement, response.comment);
+      // Check if full auto mode is enabled
+      if (this.settings.fullAutoMode === true) {
+        console.log('🤖 Full auto mode - posting comment automatically');
+        const success = await this.postCommentDirectly(tweetElement, response.comment);
 
-      if (success) {
-        console.log('✅ Reply window opened with comment pasted');
-        // Don't increment counters or log actions until user manually posts
+        if (success) {
+          this.actionCount.comments++;
+          this.lastCommentTime = Date.now();
+          console.log('✅ Comment posted automatically');
+
+          // Log action
+          chrome.runtime.sendMessage({
+            type: 'LOG_ACTION',
+            action: 'comment',
+            data: {
+              timestamp: Date.now(),
+              comment: response.comment
+            }
+          });
+        }
+        return success;
       } else {
-        console.log('❌ Failed to open reply window');
+        // Manual approval mode - open reply window and paste comment
+        const success = await this.openReplyAndPasteComment(tweetElement, response.comment);
+        return success;
       }
-
-      return success;
     } catch (error) {
       console.error('Error in intelligent commenting:', error);
       return false;
@@ -699,6 +798,102 @@ class TwitterAutoEngagement {
     return allText.length > 20 ? allText.substring(0, 200) : allText;
   }
 
+
+  async postCommentDirectly(tweetElement, comment) {
+    try {
+      console.log('🚀 POSTING COMMENT DIRECTLY - FULL AUTO MODE');
+
+      // Step 1: Find and click reply button
+      const replyButton = this.findReplyButton(tweetElement);
+      if (!replyButton) {
+        console.log('❌ Reply button not found');
+        return false;
+      }
+
+      console.log('✅ Found reply button, clicking...');
+      await this.humanClick(replyButton);
+      await this.humanDelay(2000, 3000); // Wait for UI to load
+
+      // Step 2: Wait for compose box to appear
+      console.log('🔍 Looking for compose box...');
+      let composeBox = null;
+
+      // Wait up to 8 seconds for compose box
+      for (let i = 0; i < 8; i++) {
+        const editableElements = document.querySelectorAll('div[contenteditable="true"]');
+
+        for (const element of editableElements) {
+          // Check if element is visible and ready
+          if (element.offsetParent !== null &&
+              element.clientHeight > 0 &&
+              element.clientWidth > 0) {
+            composeBox = element;
+            console.log(`✅ Found compose box (attempt ${i + 1})`);
+            break;
+          }
+        }
+
+        if (composeBox) break;
+        await this.humanDelay(1000, 1000); // Wait 1 second between attempts
+      }
+
+      if (!composeBox) {
+        console.log('❌ No compose box found after 8 seconds');
+        return false;
+      }
+
+      // Step 3: Simple text insertion using execCommand
+      console.log(`💬 Inserting comment: "${comment}"`);
+
+      // Focus and clear
+      composeBox.focus();
+      await this.humanDelay(500, 500);
+
+      // Use the most reliable method
+      document.execCommand('selectAll', false, null);
+      document.execCommand('insertText', false, comment);
+
+      await this.humanDelay(1000, 1500);
+
+      // Step 4: Find and click post button
+      console.log('🔍 Looking for post button...');
+
+      // Look for post/reply button that appears after typing
+      let postButton = null;
+      const postSelectors = [
+        '[data-testid="tweetButton"]',
+        '[data-testid="tweetButtonInline"]'
+      ];
+
+      for (const selector of postSelectors) {
+        const buttons = document.querySelectorAll(selector);
+        for (const button of buttons) {
+          if (button.offsetParent !== null && !button.disabled) {
+            postButton = button;
+            console.log(`✅ Found post button: ${button.textContent}`);
+            break;
+          }
+        }
+        if (postButton) break;
+      }
+
+      if (!postButton) {
+        console.log('❌ Post button not found');
+        return false;
+      }
+
+      console.log('📤 Clicking post button...');
+      await this.humanClick(postButton);
+
+      await this.humanDelay(2000, 3000);
+      console.log('✅ COMMENT POSTED AUTOMATICALLY!');
+      return true;
+
+    } catch (error) {
+      console.error('❌ Auto comment posting failed:', error);
+      return false;
+    }
+  }
 
   async openReplyAndPasteComment(tweetElement, comment) {
     try {
