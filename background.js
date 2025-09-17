@@ -69,7 +69,7 @@ class IntelligentCommentGenerator {
     const imageInstructions = hasImageContext ?
       '\n- Consider the visual context when responding\n- Reference the image/media if relevant to your expertise' : '';
 
-    const simplePrompt = `You must generate a casual reply to this specific tweet. Reply within 20 words, no emojis, ENGLISH ONLY. AVOID ALL POLITICAL CONTENT. The tweet you are replying to is: "${content}"`;
+    const simplePrompt = `You must generate a casual reply to this specific tweet. Don't ask questions in response. Reply within 20 words, no emojis, ENGLISH ONLY. AVOID ALL POLITICAL CONTENT. The tweet you are replying to is: "${content}"`;
 
     return simplePrompt;
   }
