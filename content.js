@@ -964,20 +964,624 @@ class TwitterAutoEngagement {
       document.execCommand('selectAll', false, null);
       document.execCommand('insertText', false, comment);
 
-      console.log('✅ Comment pasted in reply window. User can now manually review and post.');
+      console.log('✅ Comment pasted in reply window. Attempting to trigger draft save...');
 
-      // Show a manual confirmation dialog to pause extension
-      console.log('🔒 PAUSING EXTENSION - Showing confirmation dialog...');
-      const startTime = Date.now();
-      await this.showManualConfirmationDialog();
-      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-      console.log(`🔓 RESUMING EXTENSION - User confirmed after ${duration}s`);
+      // Give time for the text to be registered by Twitter's system
+      await this.humanDelay(1500, 2000);
+
+      // Mark content as dirty first
+      await this.markContentAsDirty();
+      await this.humanDelay(500, 1000);
+
+      // Try multiple approaches to trigger draft save
+      const success = await this.triggerDraftSaveViaNavigation();
+
+      if (success) {
+        console.log('✅ Successfully triggered draft save dialog');
+      } else {
+        console.log('⚠️ Could not trigger draft save automatically - trying close button as fallback');
+        // Try a simple close button click as final fallback
+        const modal = document.querySelector('[role="dialog"]');
+        if (modal) {
+          const closeButton = modal.querySelector('[aria-label="Close"], [data-testid="app-bar-close"]');
+          if (closeButton) {
+            console.log('🔄 Final fallback: Simple close button click...');
+            closeButton.click();
+            await this.humanDelay(2000, 3000);
+          }
+        }
+      }
 
       return true;
 
     } catch (error) {
       console.error('❌ Failed to open reply window:', error);
       return false;
+    }
+  }
+
+  async triggerDraftSaveViaNavigation() {
+    try {
+      console.log('🔄 Attempting to trigger draft save using close button...');
+
+      // Method 1: Sophisticated close button simulation (restore working version)
+      console.log('🔄 Method 1: Sophisticated close button click...');
+      const modal = document.querySelector('[role="dialog"]');
+      if (modal) {
+        const closeButton = modal.querySelector('[aria-label="Close"], [data-testid="app-bar-close"]');
+        if (closeButton) {
+          console.log('✅ Found close button, performing sophisticated click simulation...');
+
+          // First, ensure content is properly marked as dirty and preserved
+          const composeBox = modal.querySelector('div[contenteditable="true"]');
+          if (composeBox) {
+            // Store the current comment content
+            const currentContent = composeBox.textContent || composeBox.innerText || '';
+            console.log(`📝 Preserving comment content: "${currentContent.substring(0, 50)}..."`);
+
+            // Mark as dirty with more sophisticated interaction
+            composeBox.focus();
+            await this.humanDelay(100, 200);
+
+            // Simulate more realistic user interaction to mark as dirty
+            const selection = window.getSelection();
+            const range = document.createRange();
+
+            // Select all content and trigger events
+            range.selectNodeContents(composeBox);
+            selection.removeAllRanges();
+            selection.addRange(range);
+
+            // Simulate typing a character and then undoing it
+            document.execCommand('insertText', false, ' ');
+            await this.humanDelay(50, 100);
+            document.execCommand('undo', false, null);
+            await this.humanDelay(50, 100);
+
+            // Ensure original content is restored if needed
+            if (composeBox.textContent !== currentContent) {
+              composeBox.focus();
+              document.execCommand('selectAll', false, null);
+              document.execCommand('insertText', false, currentContent);
+            }
+
+            // Trigger comprehensive input events
+            const events = [
+              new InputEvent('input', { inputType: 'insertText', data: ' ', bubbles: true }),
+              new InputEvent('input', { inputType: 'deleteContentBackward', bubbles: true }),
+              new Event('change', { bubbles: true }),
+              new KeyboardEvent('keyup', { bubbles: true })
+            ];
+
+            events.forEach(event => composeBox.dispatchEvent(event));
+            await this.humanDelay(300, 500);
+          }
+
+          // Now perform sophisticated close button clicking
+          const rect = closeButton.getBoundingClientRect();
+
+          // Add slight randomness to click position (human-like)
+          const x = rect.left + rect.width / 2 + (Math.random() - 0.5) * 4;
+          const y = rect.top + rect.height / 2 + (Math.random() - 0.5) * 4;
+
+          console.log(`🖱️ Clicking close button at (${x.toFixed(1)}, ${y.toFixed(1)})`);
+
+          // Comprehensive mouse event sequence with realistic timing
+          const mouseEvents = [
+            new MouseEvent('mouseover', { bubbles: true, clientX: x, clientY: y }),
+            new MouseEvent('mouseenter', { bubbles: true, clientX: x, clientY: y }),
+            new MouseEvent('mousemove', { bubbles: true, clientX: x, clientY: y }),
+            new MouseEvent('mousedown', {
+              bubbles: true,
+              clientX: x,
+              clientY: y,
+              button: 0,
+              buttons: 1,
+              detail: 1
+            })
+          ];
+
+          // Dispatch mouse events with delays
+          for (const event of mouseEvents) {
+            closeButton.dispatchEvent(event);
+            await this.humanDelay(20, 50);
+          }
+
+          // Human-like click duration
+          await this.humanDelay(80, 150);
+
+          // Mouse up and click
+          closeButton.dispatchEvent(new MouseEvent('mouseup', {
+            bubbles: true,
+            clientX: x,
+            clientY: y,
+            button: 0,
+            buttons: 0,
+            detail: 1
+          }));
+
+          await this.humanDelay(20, 50);
+
+          closeButton.dispatchEvent(new MouseEvent('click', {
+            bubbles: true,
+            clientX: x,
+            clientY: y,
+            button: 0,
+            buttons: 0,
+            detail: 1
+          }));
+
+          // Also try focus-based click as backup
+          closeButton.focus();
+          await this.humanDelay(100, 200);
+
+          // Wait longer for draft dialog to appear
+          await this.humanDelay(1500, 2000);
+
+          if (this.checkForDraftDialog()) {
+            console.log('✅ Method 1 successful - sophisticated close button triggered draft save');
+            await this.clickSaveButton();
+            return true;
+          }
+        }
+      }
+
+      // Method 2: Click outside the modal (alternative approach)
+      console.log('🔄 Method 2: Clicking outside modal...');
+      if (modal) {
+        const rect = modal.getBoundingClientRect();
+
+        // Click to the left of the modal
+        let clickX = rect.left - 50;
+        let clickY = rect.top + rect.height / 2;
+
+        // Ensure click is within viewport
+        if (clickX < 10) {
+          clickX = rect.right + 50; // Try right side instead
+          if (clickX > window.innerWidth - 10) {
+            clickX = rect.left + rect.width / 2;
+            clickY = rect.top - 50; // Try above instead
+          }
+        }
+
+        // Ensure click coordinates are valid
+        clickX = Math.max(10, Math.min(clickX, window.innerWidth - 10));
+        clickY = Math.max(10, Math.min(clickY, window.innerHeight - 10));
+
+        console.log(`Clicking outside modal at (${clickX}, ${clickY})`);
+
+        // Click outside the modal
+        document.dispatchEvent(new MouseEvent('click', {
+          bubbles: true,
+          clientX: clickX,
+          clientY: clickY,
+          button: 0
+        }));
+
+        await this.humanDelay(1000, 1500);
+
+        if (this.checkForDraftDialog()) {
+          console.log('✅ Method 2 successful - clicking outside triggered draft save');
+          await this.clickSaveButton();
+          return true;
+        }
+      }
+
+      // Method 3: Try subtle hash change (only if other methods fail)
+      console.log('🔄 Method 3: Hash navigation...');
+      const originalHash = window.location.hash;
+
+      // Use a more subtle hash change that's less likely to affect the compose context
+      const subtleHash = originalHash + (originalHash.includes('#') ? '_temp' : '#_temp');
+      window.location.hash = subtleHash;
+      await this.humanDelay(100, 200);
+
+      // Check if draft save dialog appeared
+      if (this.checkForDraftDialog()) {
+        console.log('✅ Method 3 successful - hash change triggered draft save');
+        await this.clickSaveButton();
+        return true;
+      }
+
+      // Restore original hash immediately to prevent context change
+      window.location.hash = originalHash;
+      await this.humanDelay(200, 300);
+
+      console.log('❌ All methods failed to trigger draft save dialog');
+      return false;
+
+    } catch (error) {
+      console.error('❌ Error in navigation-based draft save:', error);
+      return false;
+    }
+  }
+
+  checkForDraftDialog() {
+    // Look for various Twitter dialog elements
+    const selectors = [
+      '[data-testid="confirmationSheetDialog"]',
+      '[role="alertdialog"]',
+      '[role="dialog"]:not([aria-labelledby*="compose"])', // Exclude the compose dialog itself
+      'div[role="dialog"] div:contains("Save draft")',
+      'div[role="dialog"] div:contains("Discard")',
+      'button:contains("Save draft")',
+      'button:contains("Discard")'
+    ];
+
+    for (const selector of selectors) {
+      try {
+        const elements = document.querySelectorAll(selector);
+        for (const element of elements) {
+          if (element.offsetParent !== null) {
+            const text = element.textContent?.toLowerCase() || '';
+            if ((text.includes('save') && text.includes('draft')) ||
+                text.includes('discard') ||
+                text.includes('delete') ||
+                element.getAttribute('data-testid') === 'confirmationSheetDialog') {
+              console.log(`✅ Found potential draft dialog: ${selector}`);
+              console.log('Dialog text:', text.substring(0, 100));
+              return true;
+            }
+          }
+        }
+      } catch (error) {
+        // Skip selectors that might have CSS pseudo-selectors
+        continue;
+      }
+    }
+
+    return false;
+  }
+
+  async clickSaveButton() {
+    try {
+      console.log('🔘 Looking for Save button in draft dialog...');
+
+      // Wait a moment for dialog to fully render
+      await this.humanDelay(300, 500);
+
+      // Look for save button using multiple strategies
+      const saveButtonSelectors = [
+        '[data-testid="confirmationSheetConfirm"]',
+        'button[data-testid="confirmationSheetConfirm"]',
+        'div[role="button"][data-testid="confirmationSheetConfirm"]',
+        'button:contains("Save")',
+        'div[role="button"]:contains("Save")',
+        '[role="dialog"] button:first-child', // Often the first button is "Save"
+        '[role="dialog"] div[role="button"]:first-child'
+      ];
+
+      let saveButton = null;
+
+      // Try each selector
+      for (const selector of saveButtonSelectors) {
+        try {
+          const buttons = document.querySelectorAll(selector);
+          for (const button of buttons) {
+            if (button.offsetParent !== null) {
+              const buttonText = button.textContent?.toLowerCase() || '';
+              console.log(`🔍 Checking button: "${buttonText}" with selector: ${selector}`);
+
+              // Look for "Save" text (in various languages)
+              if (buttonText.includes('save') ||
+                  buttonText.includes('saved') ||
+                  button.getAttribute('data-testid') === 'confirmationSheetConfirm') {
+                saveButton = button;
+                console.log(`✅ Found Save button: "${buttonText}"`);
+                break;
+              }
+            }
+          }
+          if (saveButton) break;
+        } catch (error) {
+          console.log(`Error with selector ${selector}:`, error);
+          continue;
+        }
+      }
+
+      // If we didn't find "Save", try to find buttons in the confirmation dialog
+      if (!saveButton) {
+        console.log('🔍 No explicit Save button found, looking for confirmation dialog buttons...');
+
+        const confirmationDialog = document.querySelector('[data-testid="confirmationSheetDialog"]');
+        if (confirmationDialog) {
+          const allButtons = confirmationDialog.querySelectorAll('button, div[role="button"]');
+          console.log(`Found ${allButtons.length} buttons in confirmation dialog`);
+
+          for (const button of allButtons) {
+            if (button.offsetParent !== null) {
+              const buttonText = button.textContent?.toLowerCase() || '';
+              console.log(`🔍 Dialog button text: "${buttonText}"`);
+
+              // The first button is usually "Save" in Twitter's dialogs
+              if (!saveButton) {
+                saveButton = button;
+                console.log(`✅ Using first button as Save: "${buttonText}"`);
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      if (!saveButton) {
+        console.log('❌ No Save button found in draft dialog');
+        return false;
+      }
+
+      // Click the save button
+      console.log('🖱️ Clicking Save button...');
+
+      // Focus first
+      saveButton.focus();
+      await this.humanDelay(100, 200);
+
+      // Get button position for realistic click
+      const rect = saveButton.getBoundingClientRect();
+      const x = rect.left + rect.width / 2 + (Math.random() - 0.5) * 4;
+      const y = rect.top + rect.height / 2 + (Math.random() - 0.5) * 4;
+
+      // Perform realistic click
+      const events = [
+        new MouseEvent('mousedown', { bubbles: true, clientX: x, clientY: y, button: 0 }),
+        new MouseEvent('mouseup', { bubbles: true, clientX: x, clientY: y, button: 0 }),
+        new MouseEvent('click', { bubbles: true, clientX: x, clientY: y, button: 0 })
+      ];
+
+      for (const event of events) {
+        saveButton.dispatchEvent(event);
+        await this.humanDelay(50, 100);
+      }
+
+      console.log('✅ Save button clicked - draft should be saved!');
+
+      // Wait to see if dialog closes
+      await this.humanDelay(1000, 1500);
+
+      return true;
+
+    } catch (error) {
+      console.error('❌ Error clicking Save button:', error);
+      return false;
+    }
+  }
+
+  async showSimpleInstructions() {
+    console.log('📝 Showing simple draft save instructions...');
+
+    // Create a minimal, non-intrusive notification
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #1da1f2;
+      color: white;
+      padding: 15px 20px;
+      border-radius: 12px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      z-index: 99999;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      max-width: 300px;
+      animation: slideInRight 0.3s ease-out;
+    `;
+
+    // Add animation
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+    `;
+    document.head.appendChild(style);
+
+    notification.innerHTML = `
+      <div style="font-weight: bold; margin-bottom: 8px;">💬 Comment Ready!</div>
+      <div style="font-size: 12px; opacity: 0.9;">
+        Close this window (❌ or ESC) to save as draft
+      </div>
+    `;
+
+    document.body.appendChild(notification);
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+      if (document.body.contains(notification)) {
+        notification.style.animation = 'slideInRight 0.3s ease-out reverse';
+        setTimeout(() => {
+          if (document.body.contains(notification)) {
+            document.body.removeChild(notification);
+          }
+          if (document.head.contains(style)) {
+            document.head.removeChild(style);
+          }
+        }, 300);
+      }
+    }, 5000);
+  }
+
+  async markContentAsDirty() {
+    try {
+      const composeBox = document.querySelector('div[contenteditable="true"]');
+      if (composeBox) {
+        console.log('📝 Marking content as dirty for Twitter...');
+
+        // Focus the compose box
+        composeBox.focus();
+        await this.humanDelay(50, 100);
+
+        // Get current content
+        const currentContent = composeBox.textContent || composeBox.innerText || '';
+
+        // Simulate typing by adding and removing an invisible character
+        const invisibleChar = '\u200B'; // Zero-width space
+
+        // Add invisible character
+        document.execCommand('insertText', false, invisibleChar);
+        await this.humanDelay(50, 100);
+
+        // Remove it
+        document.execCommand('delete', false, null);
+        await this.humanDelay(50, 100);
+
+        // Ensure original content is restored
+        if (currentContent && composeBox.textContent !== currentContent) {
+          composeBox.focus();
+          document.execCommand('selectAll', false, null);
+          document.execCommand('insertText', false, currentContent);
+        }
+
+        // Trigger input events to mark as changed
+        const inputEvent = new InputEvent('input', {
+          inputType: 'insertText',
+          data: invisibleChar,
+          bubbles: true,
+          cancelable: false
+        });
+        composeBox.dispatchEvent(inputEvent);
+
+        // Also trigger change event
+        const changeEvent = new Event('change', { bubbles: true });
+        composeBox.dispatchEvent(changeEvent);
+
+        console.log('✅ Content marked as dirty');
+      }
+    } catch (error) {
+      console.log('Warning: Could not mark content as dirty:', error);
+    }
+  }
+
+  async performRealisticClick(element, x, y) {
+    console.log('🖱️ Performing realistic click sequence...');
+
+    // Mouse enter the element area
+    const mouseEnterEvent = new MouseEvent('mouseenter', {
+      bubbles: true,
+      cancelable: true,
+      clientX: x,
+      clientY: y
+    });
+    element.dispatchEvent(mouseEnterEvent);
+    await this.humanDelay(10, 30);
+
+    // Mouse over
+    const mouseOverEvent = new MouseEvent('mouseover', {
+      bubbles: true,
+      cancelable: true,
+      clientX: x,
+      clientY: y
+    });
+    element.dispatchEvent(mouseOverEvent);
+    await this.humanDelay(20, 50);
+
+    // Mouse down
+    const mouseDownEvent = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      clientX: x,
+      clientY: y,
+      button: 0,
+      buttons: 1
+    });
+    element.dispatchEvent(mouseDownEvent);
+
+    // Human-like click duration
+    await this.humanDelay(80, 150);
+
+    // Mouse up
+    const mouseUpEvent = new MouseEvent('mouseup', {
+      bubbles: true,
+      cancelable: true,
+      clientX: x,
+      clientY: y,
+      button: 0,
+      buttons: 0
+    });
+    element.dispatchEvent(mouseUpEvent);
+
+    await this.humanDelay(10, 30);
+
+    // Click event
+    const clickEvent = new MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      clientX: x,
+      clientY: y,
+      button: 0,
+      buttons: 0,
+      detail: 1
+    });
+    element.dispatchEvent(clickEvent);
+
+    console.log('✅ Click sequence completed');
+  }
+
+
+  async simulateRealisticClick(element, clickOutside = false) {
+    try {
+      const rect = element.getBoundingClientRect();
+      let x, y;
+
+      if (clickOutside) {
+        // Click outside the modal content but within the backdrop
+        x = rect.left + 20; // Near the left edge
+        y = rect.top + 20;  // Near the top edge
+      } else {
+        // Click within the element (for buttons)
+        x = rect.left + rect.width * (0.4 + Math.random() * 0.2);
+        y = rect.top + rect.height * (0.4 + Math.random() * 0.2);
+      }
+
+      // Simulate complete mouse interaction sequence
+      const mouseEvents = [
+        new MouseEvent('mouseover', { bubbles: true, clientX: x, clientY: y }),
+        new MouseEvent('mouseenter', { bubbles: true, clientX: x, clientY: y }),
+        new MouseEvent('mousemove', { bubbles: true, clientX: x, clientY: y }),
+        new MouseEvent('mousedown', {
+          bubbles: true,
+          clientX: x,
+          clientY: y,
+          button: 0,
+          buttons: 1
+        })
+      ];
+
+      // Dispatch mouse events with small delays
+      for (const event of mouseEvents) {
+        element.dispatchEvent(event);
+        await this.humanDelay(10, 50);
+      }
+
+      // Delay before mouse up (realistic click duration)
+      await this.humanDelay(80, 150);
+
+      // Mouse up and click events
+      const mouseUpEvent = new MouseEvent('mouseup', {
+        bubbles: true,
+        clientX: x,
+        clientY: y,
+        button: 0,
+        buttons: 0
+      });
+      element.dispatchEvent(mouseUpEvent);
+
+      await this.humanDelay(10, 30);
+
+      const clickEvent = new MouseEvent('click', {
+        bubbles: true,
+        clientX: x,
+        clientY: y,
+        button: 0,
+        buttons: 0
+      });
+      element.dispatchEvent(clickEvent);
+
+      console.log(`✅ Performed realistic click on element at (${x.toFixed(1)}, ${y.toFixed(1)})`);
+
+    } catch (error) {
+      console.error('Error in realistic click simulation:', error);
     }
   }
 
